@@ -61,7 +61,12 @@ impl Frame<'_> {
         let When::Timed { end, .. } = event.when else {
             return None;
         };
-        if grid.on_resize.is_none() || end.to_zoned(self.zone.clone()).date() != day {
+        if grid.on_resize.is_none()
+            || (end - jiff::SignedDuration::from_nanos(1))
+                .to_zoned(self.zone.clone())
+                .date()
+                != day
+        {
             return None;
         }
         let key = event.key.clone();

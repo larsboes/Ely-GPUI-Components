@@ -185,3 +185,25 @@ fn all_day_switching_preserves_the_last_day_and_excludes_midnight() {
         })
     );
 }
+
+fn midnight(_: &Planning, _: Entity<Planning>) -> gpui::AnyElement {
+    div()
+        .h(px(600.0))
+        .child(
+            TimeGrid::new(
+                "midnight",
+                [date(2026, 9, 22)],
+                [Event::timed("night", "Night", at(22, 23), at(23, 0), 0)],
+            )
+            .zone(TimeZone::UTC)
+            .now(at(22, 12))
+            .on_resize(|_, _, _, _| {}),
+        )
+        .into_any_element()
+}
+
+#[gpui::test]
+fn midnight_end_keeps_its_resize_handle_on_the_last_visible_day(cx: &mut TestAppContext) {
+    let (_, cx) = planning(midnight, cx);
+    assert!(cx.debug_bounds("end night 2026-09-22").is_some());
+}

@@ -159,10 +159,10 @@ impl RenderOnce for EventEditor {
                             && editing.invalid_local.is_none()
                         {
                             let draft = editing.current(cx);
-                            if draft.fault().is_none() {
-                                if let Some(handler) = &editing.on_save {
-                                    handler(&draft, window, cx);
-                                }
+                            if draft.fault().is_none()
+                                && let Some(handler) = &editing.on_save
+                            {
+                                handler(&draft, window, cx);
                             }
                         }
                         cx.notify();
