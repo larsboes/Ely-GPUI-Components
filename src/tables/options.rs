@@ -26,7 +26,14 @@ impl DataTable {
             on_edit: None,
             density: Density::Standard,
             empty: None,
+            scroll: None,
         }
+    }
+
+    /// A virtualized table's rows scroll by `handle`, so the app can scroll them to a row.
+    pub fn track_scroll(mut self, handle: &gpui::UniformListScrollHandle) -> Self {
+        self.scroll = Some(handle.clone());
+        self
     }
 
     /// What the table says when no row shows, in place of "Nothing matches.".

@@ -82,6 +82,7 @@ pub struct DataTable {
     pub(super) on_edit: Option<OnEdit>,
     pub(super) density: Density,
     pub(super) empty: Option<SharedString>,
+    pub(super) scroll: Option<UniformListScrollHandle>,
 }
 
 impl Styled for DataTable {
@@ -390,7 +391,9 @@ impl RenderOnce for DataTable {
                 .into_any_element()
         } else if self.virtualized {
             let (scroll, count, cols, drawn) = (
-                view.read(cx).scroll.clone(),
+                self.scroll
+                    .clone()
+                    .unwrap_or_else(|| view.read(cx).scroll.clone()),
                 body.lines.len(),
                 shown_columns.clone(),
                 body.clone(),
