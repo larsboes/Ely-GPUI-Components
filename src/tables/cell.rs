@@ -152,6 +152,7 @@ pub struct Column {
     pub(crate) key: SharedString,
     pub(crate) title: SharedString,
     pub(crate) width: Option<Rems>,
+    pub(crate) min_width: Option<Rems>,
     pub(crate) align: Align,
     pub(crate) sortable: bool,
     pub(crate) decimals: usize,
@@ -172,6 +173,7 @@ impl Column {
             key: key.into(),
             title: title.into(),
             width: None,
+            min_width: None,
             align: Align::Start,
             sortable: true,
             decimals: 0,
@@ -190,6 +192,12 @@ impl Column {
     /// A fixed width; columns without one share what is left.
     pub fn width(mut self, width: Rems) -> Self {
         self.width = Some(width);
+        self
+    }
+
+    /// Keeps a flexible column readable when the table scrolls sideways.
+    pub fn min_width(mut self, width: Rems) -> Self {
+        self.min_width = Some(width);
         self
     }
 

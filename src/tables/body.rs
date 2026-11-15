@@ -13,7 +13,7 @@ use crate::{
     layout::on_axis,
     lists::Pick,
     menus::{Menu, MenuItem, menu_under},
-    primitives::Disclosure,
+    primitives::{Disclosure, tab_stop},
     theme::{ActiveTheme, ControlSize, TextSize},
 };
 
@@ -29,7 +29,7 @@ pub(super) type Press = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 pub(super) fn sized<E: Styled>(cell: E, column: &Column, narrowest: Rems) -> E {
     let cell = match column.width {
         Some(width) => cell.w(width).flex_none(),
-        None => cell.flex_1().min_w(narrowest),
+        None => cell.flex_1().min_w(column.min_width.unwrap_or(narrowest)),
     };
     if column.align == Align::End {
         cell.justify_end()
@@ -105,7 +105,10 @@ impl Body {
             sum + match (self.widths[*col], self.columns[*col].width) {
                 (Some(width), _) => width,
                 (None, Some(width)) => width.to_pixels(rem),
-                (None, None) => self.narrowest.to_pixels(rem),
+                (None, None) => self.columns[*col]
+                    .min_width
+                    .unwrap_or(self.narrowest)
+                    .to_pixels(rem),
             }
         })
     }
@@ -432,6 +435,9 @@ impl Body {
         )
             .into();
         let drawn = draw(cell, column, (id.clone(), "draw").into(), cx);
+        let focus = tab_stop((id.clone(), "trigger").into(), true, window, cx);
+        let label = format!("{}: {}", column.title, now);
+        let ring = cx.theme().colors.focus;
         let named = format!("table-choices {} {}", row.key, column.key);
         menu_under(
             id.clone(),
@@ -440,6 +446,12 @@ impl Body {
                 div()
                     .id((id, "trigger"))
                     .debug_selector(move || named.clone())
+                    .track_focus(&focus)
+                    .role(gpui::Role::Button)
+                    .aria_label(label)
+                    .border_1()
+                    .border_color(transparent_black())
+                    .focus(move |style| style.border_color(ring))
                     .min_w_0()
                     .cursor_pointer()
                     .on_click(move |event, window, cx| {

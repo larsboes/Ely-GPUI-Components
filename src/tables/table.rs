@@ -68,6 +68,7 @@ pub(super) type OnSort = Rc<dyn Fn(&[SortKey], &mut Window, &mut App)>;
 pub struct DataTable {
     pub(super) id: ElementId,
     pub(super) base: Div,
+    pub(super) label: Option<SharedString>,
     pub(super) columns: Vec<Column>,
     pub(super) rows: Rc<Vec<Row>>,
     pub(super) query: SharedString,
@@ -529,7 +530,13 @@ impl RenderOnce for DataTable {
                     ),
                 )
         });
-        let base = self.base.id((id.clone(), "table")).flex().flex_col();
+        let base = self
+            .base
+            .id((id.clone(), "table"))
+            .role(gpui::Role::Table)
+            .when_some(self.label, |base, label| base.aria_label(label))
+            .flex()
+            .flex_col();
         let base = match rows_focus {
             Some(focus) => {
                 let (ordered, current, on_open) = (ordered.clone(), current.clone(), self.on_open);

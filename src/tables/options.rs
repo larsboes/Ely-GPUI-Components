@@ -10,6 +10,7 @@ impl DataTable {
         Self {
             id: id.into(),
             base: div(),
+            label: None,
             columns: columns.into_iter().collect(),
             rows: Rc::default(),
             query: SharedString::default(),
@@ -33,6 +34,12 @@ impl DataTable {
             empty: None,
             scroll: None,
         }
+    }
+
+    /// Names the table for assistive technology without drawing a heading.
+    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
+        self.label = Some(label.into());
+        self
     }
 
     /// A virtualized table's rows scroll by `handle`, so the app can scroll them to a row.

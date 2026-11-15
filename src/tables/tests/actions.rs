@@ -88,7 +88,7 @@ impl Render for Subtitles {
         let table = DataTable::new(
             "subtitles",
             [
-                Column::new("name", "Name"),
+                Column::new("name", "Name").min_width(gpui::rems(15.)),
                 Column::new("actions", "")
                     .width(gpui::rems(7.))
                     .actions([RowAction::new("edit", "Edit")]),
@@ -119,6 +119,62 @@ impl Render for Subtitles {
     }
 }
 
+struct Minimum(bool);
+
+impl Render for Minimum {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let table = DataTable::new(
+            "minimum",
+            [
+                Column::new("name", "Name").min_width(gpui::rems(15.)),
+                Column::new("actions", "")
+                    .width(gpui::rems(7.))
+                    .actions([RowAction::new("edit", "Edit")]),
+            ],
+        )
+        .rows(vec![Row::new("a", ["Short".into(), Cell::Empty])])
+        .on_action(|_, _, _, _| {})
+        .w(px(280.))
+        .h(px(200.));
+        if self.0 { table.virtualized() } else { table }
+    }
+}
+
+#[gpui::test]
+fn flexible_minimum_keeps_columns_aligned_when_scrolling(cx: &mut TestAppContext) {
+    cx.update(Theme::init);
+    for virtualized in [false, true] {
+        let (_, cx) = cx.add_window_view(|_, _| Minimum(virtualized));
+        settle(cx);
+        let header = cx.debug_bounds("table-header name").unwrap();
+        let actions = cx.debug_bounds("table-header actions").unwrap();
+        let button = cx.debug_bounds("table-action a edit").unwrap();
+        assert_eq!(header.size.width, px(240.));
+        assert_eq!(actions.left(), header.right());
+        assert!(
+            button.right() > px(280.),
+            "the minimum forces horizontal overflow"
+        );
+        assert!(button.left() >= actions.left() && button.right() <= actions.right());
+        cx.simulate_event(gpui::ScrollEvent {
+            source: gpui::ScrollSource::Pointer,
+            position: gpui::point(px(200.), px(54.)),
+            delta: gpui::ScrollDelta::Pixels(gpui::point(px(-400.), px(0.))),
+            modifiers: Modifiers::none(),
+            touch_phase: gpui::TouchPhase::Moved,
+        });
+        settle(cx);
+        let moved = cx.debug_bounds("table-header name").unwrap();
+        let actions = cx.debug_bounds("table-header actions").unwrap();
+        let button = cx.debug_bounds("table-action a edit").unwrap();
+        assert!(moved.left() < header.left());
+        assert_eq!(moved.size.width, px(240.));
+        assert_eq!(actions.left(), moved.right());
+        assert!(button.left() >= actions.left() && button.right() <= actions.right());
+        assert!(button.right() <= px(280.), "scrolling reveals the action");
+    }
+}
+
 #[gpui::test]
 fn long_subtitles_keep_row_actions_in_their_column(cx: &mut TestAppContext) {
     cx.update(Theme::init);
@@ -128,6 +184,10 @@ fn long_subtitles_keep_row_actions_in_their_column(cx: &mut TestAppContext) {
         let short = cx.debug_bounds("table-action short edit").unwrap();
         let long = cx.debug_bounds("table-action long edit").unwrap();
         assert_eq!(short.left(), long.left(), "virtualized={virtualized}");
+        assert!(
+            long.left() >= px(240.),
+            "the name column keeps its minimum width"
+        );
         assert!(
             long.right() <= px(500.),
             "the action stays inside the table"

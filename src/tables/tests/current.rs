@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    Context, IntoElement, Modifiers, Render, SharedString, Styled, TestAppContext,
+    AppContext, Context, IntoElement, Modifiers, Render, SharedString, Styled, TestAppContext,
     VisualTestContext, Window, point, px,
 };
 
@@ -128,6 +128,70 @@ fn a_press_flips_a_box_through_on_edit_and_does_not_open(cx: &mut TestAppContext
     let heard = ears.borrow();
     assert_eq!(heard.edits, [("b".into(), "done".into(), "false".into())]);
     assert!(heard.opened.is_empty(), "the box takes the press");
+}
+
+struct KeyboardTasks {
+    tasks: gpui::Entity<Tasks>,
+    focus: gpui::FocusHandle,
+}
+
+impl Render for KeyboardTasks {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        use gpui::ParentElement;
+        crate::primitives::FocusScope::new(&self.focus)
+            .root()
+            .child(self.tasks.clone())
+    }
+}
+
+#[gpui::test]
+fn a_choice_cell_opens_by_keyboard_and_escape_returns_focus(cx: &mut TestAppContext) {
+    let press = |cx: &mut VisualTestContext| {
+        keys("enter", cx);
+        cx.simulate_event(gpui::KeyUpEvent {
+            keystroke: gpui::Keystroke::parse("enter").unwrap(),
+        });
+        settle(cx);
+    };
+    cx.update(crate::init_for_tests);
+    let ears = Ears::default();
+    let heard = ears.clone();
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
+        KeyboardTasks {
+            tasks: cx.new(|_| Tasks(heard)),
+            focus,
+        }
+    });
+    settle(cx);
+    keys("tab tab tab tab tab", cx);
+    assert!(ears.borrow().opened.is_empty());
+    press(cx);
+    assert!(
+        cx.debug_bounds("menu-row doing").is_some(),
+        "Tab reaches the choice trigger"
+    );
+    assert!(
+        ears.borrow().opened.is_empty(),
+        "opening choices does not open the row"
+    );
+    keys("escape", cx);
+    assert!(cx.debug_bounds("menu-row doing").is_none());
+    let opened = ears.borrow().opened.len();
+    press(cx);
+    assert!(
+        cx.debug_bounds("menu-row doing").is_some(),
+        "Escape returns focus to the trigger"
+    );
+    keys("down", cx);
+    press(cx);
+    assert_eq!(
+        ears.borrow().opened.len(),
+        opened,
+        "editing never opens the row"
+    );
+    assert_eq!(ears.borrow().edits.len(), 1);
 }
 
 #[gpui::test]

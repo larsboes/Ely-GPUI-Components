@@ -131,8 +131,10 @@ pub(crate) fn header(
         view.clone(),
     );
     let title = column.title.clone();
+    let named = format!("table-header {key}");
     let cell = div()
         .id((id.clone(), format!("head-{key}")))
+        .debug_selector(move || named.clone())
         .relative()
         .h_full()
         .flex()
