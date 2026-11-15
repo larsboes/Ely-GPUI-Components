@@ -5,7 +5,7 @@ use gpui::{
 };
 use jiff::{Timestamp, civil::Date, tz::TimeZone};
 
-use super::hours::moment;
+use super::hours::try_moment;
 use crate::{
     forms::{Choice, ChoiceChips},
     layout::seeded::use_seeded,
@@ -30,7 +30,13 @@ pub(crate) fn open_slots(
     let mut starts = Vec::new();
     let mut start = hours.0;
     while start + length <= hours.1 {
-        let (from, to) = (moment(day, start, zone), moment(day, start + length, zone));
+        let (Some(from), Some(to)) = (
+            try_moment(day, start, zone),
+            try_moment(day, start + length, zone),
+        ) else {
+            start += STEP;
+            continue;
+        };
         let free = busy
             .iter()
             .all(|(taken, until)| *until <= from || *taken >= to);
@@ -218,7 +224,10 @@ impl RenderOnce for AvailabilityPicker {
                     .expect("a slot is chosen")
                     .parse()
                     .expect("a slot's value is its minute");
-                let start = moment(shown, minute, &zone);
+                let Some(start) = try_moment(shown, minute, &zone) else {
+                    log::warn!("availability: invalid local slot");
+                    return;
+                };
                 log::info!("availability picker: picked {start}");
                 if let Some(on_pick) = &on_pick {
                     on_pick(start, window, cx);

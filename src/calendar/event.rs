@@ -1,4 +1,4 @@
-use gpui::SharedString;
+use gpui::{Hsla, SharedString};
 use jiff::{SignedDuration, Timestamp, civil::Date, tz::TimeZone};
 
 use crate::typography::format;
@@ -18,6 +18,9 @@ pub struct Event {
     pub when: When,
     pub hue: usize,
     pub place: Option<SharedString>,
+    pub color: Option<Hsla>,
+    pub tentative: bool,
+    pub selected: bool,
 }
 
 impl Event {
@@ -37,6 +40,9 @@ impl Event {
             when: When::Timed { start, end },
             hue,
             place: None,
+            color: None,
+            tentative: false,
+            selected: false,
         }
     }
 
@@ -59,6 +65,9 @@ impl Event {
             when: When::AllDay { first, last },
             hue,
             place: None,
+            color: None,
+            tentative: false,
+            selected: false,
         }
     }
 

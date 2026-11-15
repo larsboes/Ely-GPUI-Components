@@ -8,6 +8,7 @@ use jiff::{Timestamp, civil::date, tz::TimeZone};
 use super::{CalendarMonthView, Event, YearView};
 
 mod editing;
+mod migration;
 mod people;
 mod times;
 use crate::{primitives::FocusNext, theme::Theme};

@@ -34,6 +34,10 @@ pub struct CalendarMonthView {
     on_day: Option<OnDay>,
     on_event: Option<OnValue>,
     on_month: Option<OnDay>,
+    selected: Option<Date>,
+    on_select: Option<OnDay>,
+    keyboard: bool,
+    header: bool,
 }
 
 impl CalendarMonthView {
@@ -51,7 +55,32 @@ impl CalendarMonthView {
             on_day: None,
             on_event: None,
             on_month: None,
+            selected: None,
+            on_select: None,
+            keyboard: true,
+            header: true,
         }
+    }
+
+    /// Uses the application's selected day.
+    pub fn selected(mut self, day: Date) -> Self {
+        self.selected = Some(day);
+        self
+    }
+    /// Reports each selected day, including pointer and keyboard changes.
+    pub fn on_select(mut self, handler: impl Fn(Date, &mut Window, &mut App) + 'static) -> Self {
+        self.on_select = Some(Rc::new(handler));
+        self
+    }
+    /// Enables the built-in key handler.
+    pub fn keyboard(mut self, enabled: bool) -> Self {
+        self.keyboard = enabled;
+        self
+    }
+    /// Shows built-in navigation.
+    pub fn header(mut self, show: bool) -> Self {
+        self.header = show;
+        self
     }
 
     /// The day marked as today; the zone's own otherwise.
@@ -190,7 +219,10 @@ impl Row<'_> {
                 .text_color(colors.fg_muted)
                 .cursor_pointer()
                 .hover(|style| style.bg(colors.hover))
-                .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+                .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                })
                 .on_click(move |_, window, cx| open(day, window, cx))
                 .child(div().min_w_0().child(Ellipsis::new(format!("{more} more"))))
         });
@@ -312,6 +344,9 @@ impl RenderOnce for CalendarMonthView {
             cursor.update(cx, |cursor, _| *cursor = start);
         }
         let focus = tab_stop((self.id.clone(), "focus").into(), true, window, cx);
+        if let Some(day) = self.selected {
+            cursor.update(cx, |cursor, _| *cursor = day);
+        }
         let at = *cursor.read(cx);
         let turn: OnDay = {
             let (id, month, on_month) = (self.id.clone(), month.clone(), self.on_month.clone());
@@ -332,12 +367,16 @@ impl RenderOnce for CalendarMonthView {
         };
         let pick: OnDay = {
             let cursor = cursor.clone();
+            let on_select = self.on_select.clone();
             Rc::new(move |day, window, cx| {
                 cursor.update(cx, |cursor, cx| {
                     *cursor = day;
                     cx.notify();
                 });
                 turn(day, window, cx);
+                if let Some(handler) = &on_select {
+                    handler(day, window, cx);
+                }
             })
         };
         let open: OnDay = {
@@ -363,9 +402,10 @@ impl RenderOnce for CalendarMonthView {
             })
         };
         let keys = {
+            let keyboard = self.keyboard;
             let (focus, pick, open) = (focus.clone(), pick.clone(), open.clone());
             move |event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut App| {
-                if !focus.is_focused(window) {
+                if !keyboard || !focus.is_focused(window) {
                     return;
                 }
                 let by = match event.keystroke.key.as_str() {
@@ -402,7 +442,7 @@ impl RenderOnce for CalendarMonthView {
             zone: &zone,
             shown,
             today,
-            cursor: focus.is_focused(window).then_some(at),
+            cursor: (self.selected.is_some() || focus.is_focused(window)).then_some(at),
             pick,
             open,
             on_event: self.on_event.clone(),
@@ -426,14 +466,16 @@ impl RenderOnce for CalendarMonthView {
             .flex()
             .flex_col()
             .gap_3()
-            .child(head(
-                &self.id,
-                title,
-                "Previous month",
-                "Next month",
-                step,
-                cx,
-            ))
+            .when(self.header, |view| {
+                view.child(head(
+                    &self.id,
+                    title,
+                    "Previous month",
+                    "Next month",
+                    step,
+                    cx,
+                ))
+            })
             .child(
                 div().flex().flex_col().child(weekdays).child(
                     div()

@@ -1,8 +1,13 @@
+mod state;
+use state::Editing;
+pub use state::EventDraft;
+pub(super) use state::{moved, toggled};
+
 use std::rc::Rc;
 
 use gpui::{
-    App, Context, ElementId, Entity, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    SharedString, Styled, Subscription, Window, div, prelude::*,
+    App, Context, ElementId, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
+    RenderOnce, SharedString, Styled, Subscription, Window, div, prelude::*,
 };
 use jiff::{SignedDuration, Timestamp, civil::DateTime, tz::TimeZone};
 
@@ -24,121 +29,6 @@ use crate::{
 
 type OnDraft = Rc<dyn Fn(&EventDraft, &mut Window, &mut App)>;
 
-/// An event's parts as an editor hands them back.
-#[derive(Clone, Debug, PartialEq)]
-pub struct EventDraft {
-    pub title: SharedString,
-    pub when: When,
-    pub place: SharedString,
-    pub hue: usize,
-    pub repeat: Option<Recurrence>,
-    pub reminders: Vec<u32>,
-    pub notes: SharedString,
-}
-
-impl EventDraft {
-    /// `event`'s parts, with no repeat, reminders or notes.
-    pub fn of(event: &Event) -> Self {
-        Self {
-            title: event.title.clone(),
-            when: event.when,
-            place: event.place.clone().unwrap_or_default(),
-            hue: event.hue,
-            repeat: None,
-            reminders: Vec::new(),
-            notes: SharedString::default(),
-        }
-    }
-
-    /// Why it cannot be saved: no title, or an end before its start.
-    pub(crate) fn fault(&self) -> Option<&'static str> {
-        if self.title.trim().is_empty() {
-            return Some("Give it a title.");
-        }
-        let backward = match self.when {
-            When::Timed { start, end } => end <= start,
-            When::AllDay { first, last } => last < first,
-        };
-        backward.then_some("It ends before it starts.")
-    }
-}
-
-/// `when` as whole days, or as hours from nine to ten on its first day; none when the zone holds no such hours.
-pub(super) fn toggled(when: When, zone: &TimeZone) -> Option<When> {
-    match when {
-        When::Timed { start, end } => {
-            let first = start.to_zoned(zone.clone()).date();
-            let last = end.to_zoned(zone.clone()).date().max(first);
-            Some(When::AllDay { first, last })
-        }
-        When::AllDay { first, .. } => {
-            let at = |hour| match first.at(hour, 0, 0, 0).to_zoned(zone.clone()) {
-                Ok(at) => Some(at.timestamp()),
-                Err(error) => {
-                    log::error!("event editor: {first} at {hour}:00 has no moment: {error}");
-                    None
-                }
-            };
-            Some(When::Timed {
-                start: at(9)?,
-                end: at(10)?,
-            })
-        }
-    }
-}
-
-/// `when` with its start moved to `start`, its length kept; none for an all-day event or an end past what jiff holds.
-pub(super) fn moved(when: When, start: Timestamp) -> Option<When> {
-    let When::Timed { start: was, end } = when else {
-        log::error!("event editor: an all-day event does not move by the hour");
-        return None;
-    };
-    let length: SignedDuration = end.duration_since(was);
-    match start.checked_add(length) {
-        Ok(end) => Some(When::Timed { start, end }),
-        Err(error) => {
-            log::error!("event editor: no end {length} after {start}: {error}");
-            None
-        }
-    }
-}
-
-/// The editor's working copy: what the owner gave, the parts changed so far, and the fields that hold its words.
-struct Editing {
-    seed: EventDraft,
-    draft: EventDraft,
-    title: Entity<TextInput>,
-    place: Entity<TextInput>,
-    notes: Entity<TextInput>,
-    _title: Subscription,
-}
-
-impl Editing {
-    fn fill(&mut self, seed: EventDraft, cx: &mut Context<Self>) {
-        for (input, text) in [
-            (&self.title, &seed.title),
-            (&self.place, &seed.place),
-            (&self.notes, &seed.notes),
-        ] {
-            input.update(cx, |input, cx| input.set_text(text.to_string(), cx));
-        }
-        self.draft = seed.clone();
-        self.seed = seed;
-    }
-
-    /// The draft as it stands, its words read from the fields.
-    fn current(&self, cx: &App) -> EventDraft {
-        let words =
-            |input: &Entity<TextInput>| SharedString::from(input.read(cx).text().to_string());
-        EventDraft {
-            title: words(&self.title).trim().to_string().into(),
-            place: words(&self.place).trim().to_string().into(),
-            notes: words(&self.notes),
-            ..self.draft.clone()
-        }
-    }
-}
-
 /// An event's parts in a form: its title, whole days or hours from and until, where, its color, how it repeats, its reminders and notes. Save waits for a title and an end after the start; Delete shows with its handler. A new draft from the owner starts it over.
 #[derive(IntoElement)]
 pub struct EventEditor {
@@ -148,6 +38,12 @@ pub struct EventEditor {
     on_save: Option<OnDraft>,
     on_cancel: Option<Run>,
     on_delete: Option<Run>,
+    autofocus: bool,
+    pending: bool,
+    error: Option<SharedString>,
+    scheduling: bool,
+    clamp_end: bool,
+    extra: Option<gpui::AnyElement>,
 }
 
 impl EventEditor {
@@ -159,7 +55,44 @@ impl EventEditor {
             on_save: None,
             on_cancel: None,
             on_delete: None,
+            autofocus: false,
+            pending: false,
+            error: None,
+            scheduling: true,
+            clamp_end: false,
+            extra: None,
         }
+    }
+
+    /// Focuses the title when a new editor session mounts.
+    pub fn autofocus(mut self, focus: bool) -> Self {
+        self.autofocus = focus;
+        self
+    }
+    /// Disables save while the owner persists the draft.
+    pub fn pending(mut self, pending: bool) -> Self {
+        self.pending = pending;
+        self
+    }
+    /// Displays a persistence error without replacing the draft.
+    pub fn error(mut self, error: Option<SharedString>) -> Self {
+        self.error = error;
+        self
+    }
+    /// Shows color, recurrence and reminder controls.
+    pub fn scheduling(mut self, show: bool) -> Self {
+        self.scheduling = show;
+        self
+    }
+    /// Clamps an earlier end date to the new start date.
+    pub fn clamp_end_date(mut self, clamp: bool) -> Self {
+        self.clamp_end = clamp;
+        self
+    }
+    /// Adds application-owned fields before the actions.
+    pub fn extra(mut self, extra: impl IntoElement) -> Self {
+        self.extra = Some(extra.into_any_element());
+        self
     }
 
     /// The zone its hours read in; the system's otherwise.
@@ -213,11 +146,28 @@ impl RenderOnce for EventEditor {
                 let title = field("Title", &seed.title, false);
                 let place = field("Where", &seed.place, false);
                 let notes = field("Notes", &seed.notes, true);
-                let watch = cx.subscribe(&title, |_, _, event: &InputEvent, cx| {
-                    if *event == InputEvent::Changed {
+                if self.autofocus {
+                    window.focus(&title.read(cx).focus_handle(cx), cx);
+                }
+
+                let watch = cx.subscribe_in(
+                    &title,
+                    window,
+                    |editing: &mut Editing, _, event: &InputEvent, window, cx| {
+                        if *event == InputEvent::Submit
+                            && !editing.pending
+                            && editing.invalid_local.is_none()
+                        {
+                            let draft = editing.current(cx);
+                            if draft.fault().is_none() {
+                                if let Some(handler) = &editing.on_save {
+                                    handler(&draft, window, cx);
+                                }
+                            }
+                        }
                         cx.notify();
-                    }
-                });
+                    },
+                );
                 Editing {
                     seed: seed.clone(),
                     draft: seed.clone(),
@@ -225,6 +175,9 @@ impl RenderOnce for EventEditor {
                     place,
                     notes,
                     _title: watch,
+                    on_save: self.on_save.clone(),
+                    pending: self.pending,
+                    invalid_local: None,
                 }
             },
         );
@@ -232,6 +185,10 @@ impl RenderOnce for EventEditor {
             log::info!("event editor {:?}: started over", self.id);
             editing.update(cx, |editing, cx| editing.fill(self.draft.clone(), cx));
         }
+        editing.update(cx, |editing, _| {
+            editing.on_save = self.on_save.clone();
+            editing.pending = self.pending;
+        });
         let draft = editing.read(cx).current(cx);
         let edit = {
             let editing = editing.clone();
@@ -240,18 +197,28 @@ impl RenderOnce for EventEditor {
                 move |cx: &mut App| {
                     editing.update(cx, |editing, cx| {
                         change(&mut editing.draft);
+                        editing.invalid_local = None;
                         cx.notify();
                     })
                 }
             }
         };
+        let clamp_end = self.clamp_end;
         let civil = |at: Timestamp| at.to_zoned(zone.clone()).datetime();
         let exact = {
             let zone = zone.clone();
-            move |at: DateTime| match at.to_zoned(zone.clone()) {
-                Ok(at) => Some(at.timestamp()),
+            let editing = editing.clone();
+            move |at: DateTime, cx: &mut App| match zone.to_ambiguous_timestamp(at).unambiguous() {
+                Ok(at) => Some(at),
                 Err(error) => {
-                    log::error!("event editor: {at} has no moment in its zone: {error}");
+                    log::warn!("event editor: {error}");
+                    editing.update(cx, |editing, cx| {
+                        editing.invalid_local = Some(
+                            "Choose a local time outside the daylight-saving gap or repeated hour."
+                                .into(),
+                        );
+                        cx.notify();
+                    });
                     None
                 }
             }
@@ -273,12 +240,33 @@ impl RenderOnce for EventEditor {
                     DateTimePicker::new((self.id.clone(), "starts"), Some(civil(start)))
                         .on_change({
                             let edit = edit.clone();
+                            let at_zone = zone.clone();
                             move |picked, _, cx| {
-                                let Some(start) = at(picked) else {
+                                let Some(start) = at(picked, cx) else {
                                     return;
                                 };
+                                let at_zone = at_zone.clone();
                                 edit(Rc::new(move |draft| {
-                                    if let Some(when) = moved(draft.when, start) {
+                                    if clamp_end {
+                                        if let When::Timed { end, .. } = draft.when {
+                                            let end_civil =
+                                                end.to_zoned(at_zone.clone()).datetime();
+                                            let new_day = start.to_zoned(at_zone.clone()).date();
+                                            let end = if end_civil.date() < new_day {
+                                                at_zone
+                                                    .to_ambiguous_timestamp(
+                                                        new_day.to_datetime(end_civil.time()),
+                                                    )
+                                                    .unambiguous()
+                                                    .ok()
+                                            } else {
+                                                Some(end)
+                                            };
+                                            if let Some(end) = end {
+                                                draft.when = When::Timed { start, end };
+                                            }
+                                        }
+                                    } else if let Some(when) = moved(draft.when, start) {
                                         draft.when = when;
                                     }
                                 }))(cx)
@@ -289,7 +277,7 @@ impl RenderOnce for EventEditor {
                         .on_change({
                             let edit = edit.clone();
                             move |picked, _, cx| {
-                                let Some(end) = until(picked) else {
+                                let Some(end) = until(picked, cx) else {
                                     return;
                                 };
                                 edit(Rc::new(move |draft| {
@@ -308,7 +296,11 @@ impl RenderOnce for EventEditor {
                         let edit = edit.clone();
                         move |day, _, cx| {
                             let length = last - first;
-                            let Ok(last) = day.checked_add(length) else {
+                            let Ok(last) = (if clamp_end {
+                                Ok(last.max(day))
+                            } else {
+                                day.checked_add(length)
+                            }) else {
                                 log::error!("event editor: no day {length} after {day}");
                                 return;
                             };
@@ -340,14 +332,19 @@ impl RenderOnce for EventEditor {
             when: draft.when,
             hue: draft.hue,
             place: None,
+            color: None,
+            tentative: false,
+            selected: false,
         }
         .days(&zone);
         let fault = draft.fault();
+        let invalid_local = editing.read(cx).invalid_local.clone();
         let save = {
             let (editing, on_save, id) = (editing.clone(), self.on_save.clone(), self.id.clone());
             Button::new((self.id.clone(), "save"), "Save")
                 .variant(ButtonVariant::Primary)
-                .disabled(fault.is_some())
+                .disabled(fault.is_some() || invalid_local.is_some())
+                .loading(self.pending)
                 .on_click(move |_, window, cx| {
                     let draft = editing.read(cx).current(cx);
                     log::info!("event editor {id:?}: save {}", draft.title);
@@ -359,11 +356,13 @@ impl RenderOnce for EventEditor {
         let cancel = self.on_cancel.clone().map(|on_cancel| {
             Button::new((self.id.clone(), "cancel"), "Cancel")
                 .variant(ButtonVariant::Ghost)
+                .disabled(self.pending)
                 .on_click(move |_, window, cx| on_cancel(window, cx))
         });
         let delete = self.on_delete.clone().map(|on_delete| {
             Button::new((self.id.clone(), "delete"), "Delete")
                 .variant(ButtonVariant::Ghost)
+                .disabled(self.pending)
                 .on_click(move |_, window, cx| on_delete(window, cx))
         });
         let (title, place, notes) = {
@@ -411,53 +410,73 @@ impl RenderOnce for EventEditor {
             .child(
                 FormField::new((self.id.clone(), "place-field"), "Where").child(Input::new(&place)),
             )
-            .child(
-                FormField::new((self.id.clone(), "color-field"), "Color").child(
-                    ColorPalette::new(
-                        (self.id.clone(), "color"),
-                        HUE_NAMES
-                            .iter()
-                            .zip(chart)
-                            .map(|(name, color)| (*name, color)),
+            .when(self.scheduling, |editor| {
+                editor
+                    .child(
+                        FormField::new((self.id.clone(), "color-field"), "Color").child(
+                            ColorPalette::new(
+                                (self.id.clone(), "color"),
+                                HUE_NAMES
+                                    .iter()
+                                    .zip(chart)
+                                    .map(|(name, color)| (*name, color)),
+                            )
+                            .selected(chart[draft.hue])
+                            .on_change({
+                                let edit = edit.clone();
+                                move |color, _, cx| {
+                                    let hue = chart
+                                        .iter()
+                                        .position(|each| *each == color)
+                                        .expect("a hue of the chart");
+                                    edit(Rc::new(move |draft| draft.hue = hue))(cx)
+                                }
+                            }),
+                        ),
                     )
-                    .selected(chart[draft.hue])
-                    .on_change({
-                        let edit = edit.clone();
-                        move |color, _, cx| {
-                            let hue = chart
-                                .iter()
-                                .position(|each| *each == color)
-                                .expect("a hue of the chart");
-                            edit(Rc::new(move |draft| draft.hue = hue))(cx)
-                        }
-                    }),
-                ),
-            )
-            .child(
-                FormField::new((self.id.clone(), "repeat-field"), "Repeat").child(
-                    RecurrenceEditor::new((self.id.clone(), "repeat"), first, draft.repeat.clone())
-                        .on_change({
-                            let edit = edit.clone();
-                            move |rule, _, cx| {
-                                edit(Rc::new(move |draft| draft.repeat = rule.clone()))(cx)
-                            }
-                        }),
-                ),
-            )
-            .child(
-                FormField::new((self.id.clone(), "reminders-field"), "Reminders").child(
-                    ReminderPicker::new((self.id.clone(), "reminders"), draft.reminders.clone())
-                        .on_change({
-                            let edit = edit.clone();
-                            move |minutes, _, cx| {
-                                let minutes = minutes.to_vec();
-                                edit(Rc::new(move |draft| draft.reminders = minutes.clone()))(cx)
-                            }
-                        }),
-                ),
-            )
+                    .child(
+                        FormField::new((self.id.clone(), "repeat-field"), "Repeat").child(
+                            RecurrenceEditor::new(
+                                (self.id.clone(), "repeat"),
+                                first,
+                                draft.repeat.clone(),
+                            )
+                            .on_change({
+                                let edit = edit.clone();
+                                move |rule, _, cx| {
+                                    edit(Rc::new(move |draft| draft.repeat = rule.clone()))(cx)
+                                }
+                            }),
+                        ),
+                    )
+                    .child(
+                        FormField::new((self.id.clone(), "reminders-field"), "Reminders").child(
+                            ReminderPicker::new(
+                                (self.id.clone(), "reminders"),
+                                draft.reminders.clone(),
+                            )
+                            .on_change({
+                                let edit = edit.clone();
+                                move |minutes, _, cx| {
+                                    let minutes = minutes.to_vec();
+                                    edit(Rc::new(move |draft| draft.reminders = minutes.clone()))(
+                                        cx,
+                                    )
+                                }
+                            }),
+                        ),
+                    )
+            })
             .child(
                 FormField::new((self.id.clone(), "notes-field"), "Notes").child(Input::new(&notes)),
+            )
+            .children(
+                invalid_local.map(|error| FormError::new((self.id.clone(), "local-error"), error)),
+            )
+            .children(self.extra)
+            .children(
+                self.error
+                    .map(|error| FormError::new((self.id.clone(), "save-error"), error)),
             )
             .child(
                 div()

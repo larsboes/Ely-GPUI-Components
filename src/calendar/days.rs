@@ -1,15 +1,16 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, ElementId, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString,
-    Styled, Window, div, prelude::*, relative,
+    AnyElement, App, ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    RenderOnce, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div,
+    prelude::*, relative,
 };
 use jiff::{Timestamp, ToSpan, civil::Date, tz::TimeZone};
 
 use super::{
     allday::AllDayRow,
     event::{Event, unique},
-    grid::{OnResize, OnSpan, TimeGrid, TimezoneOverlay},
+    grid::{FreeInterval, OnMove, OnResize, OnSpan, TimeGrid, TimezoneOverlay},
     head::{OnDay, Step, head},
 };
 use crate::{
@@ -37,6 +38,12 @@ pub struct CalendarDays<const DAYS: usize> {
     on_resize: Option<OnResize>,
     on_event: Option<OnValue>,
     on_step: Option<OnDay>,
+    on_select: Option<OnDay>,
+    on_move: Option<OnMove>,
+    on_slot: Option<OnSpan>,
+    free: Vec<FreeInterval>,
+    header: bool,
+    scroll: Option<ScrollHandle>,
 }
 
 impl<const DAYS: usize> CalendarDays<DAYS> {
@@ -57,7 +64,50 @@ impl<const DAYS: usize> CalendarDays<DAYS> {
             on_resize: None,
             on_event: None,
             on_step: None,
+            on_select: None,
+            on_move: None,
+            on_slot: None,
+            free: Vec::new(),
+            header: true,
+            scroll: None,
         }
+    }
+
+    /// Shows the built-in navigation header.
+    pub fn header(mut self, show: bool) -> Self {
+        self.header = show;
+        self
+    }
+    /// Reports a selected day heading.
+    pub fn on_select(mut self, handler: impl Fn(Date, &mut Window, &mut App) + 'static) -> Self {
+        self.on_select = Some(Rc::new(handler));
+        self
+    }
+    /// Reports one committed event move.
+    pub fn on_move(
+        mut self,
+        handler: impl Fn(&SharedString, Timestamp, Timestamp, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_move = Some(Rc::new(handler));
+        self
+    }
+    /// Reports a slot or free-interval press.
+    pub fn on_slot(
+        mut self,
+        handler: impl Fn(Timestamp, Timestamp, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_slot = Some(Rc::new(handler));
+        self
+    }
+    /// Displays application-supplied free intervals.
+    pub fn free_intervals(mut self, free: impl IntoIterator<Item = FreeInterval>) -> Self {
+        self.free = free.into_iter().collect();
+        self
+    }
+    /// Uses an application-owned scroll handle.
+    pub fn track_scroll(mut self, scroll: ScrollHandle) -> Self {
+        self.scroll = Some(scroll);
+        self
     }
 
     /// The zone its days and hours read in; the system's otherwise.
@@ -121,7 +171,16 @@ impl<const DAYS: usize> CalendarDays<DAYS> {
 }
 
 /// The days' names at their columns, today's number lit, beside the zones' names over the hours.
-fn names(days: &[Date], today: Date, zones: &[String], window: &Window, cx: &App) -> AnyElement {
+fn names(
+    id: &ElementId,
+    days: &[Date],
+    today: Date,
+    selected: Date,
+    on_select: Option<OnDay>,
+    zones: &[String],
+    window: &Window,
+    cx: &App,
+) -> AnyElement {
     let theme = cx.theme();
     let colors = &theme.colors;
     let gutter = theme.calendar().gutter.to_pixels(window.rem_size());
@@ -145,6 +204,17 @@ fn names(days: &[Date], today: Date, zones: &[String], window: &Window, cx: &App
     let columns = days.iter().enumerate().map(|(ix, day)| {
         let lit = *day == today;
         div()
+            .id((id.clone(), format!("heading-{day}")))
+            .debug_selector(move || format!("heading {day}"))
+            .when_some(on_select.clone(), |heading, handler| {
+                let day = *day;
+                heading
+                    .cursor_pointer()
+                    .on_click(move |_, window, cx| handler(day, window, cx))
+            })
+            .when(*day == selected, |heading| {
+                heading.bg(colors.accent.alpha(0.08))
+            })
             .absolute()
             .top_0()
             .bottom_0()
@@ -274,19 +344,34 @@ impl<const DAYS: usize> RenderOnce for CalendarDays<DAYS> {
         grid.on_create = self.on_create;
         grid.on_resize = self.on_resize;
         grid.on_event = self.on_event;
+        grid.on_move = self.on_move;
+        grid.on_slot = self.on_slot;
+        grid.free = self.free;
+        grid.scroll = self.scroll;
         div()
             .size_full()
             .flex()
             .flex_col()
             .gap_3()
-            .child(head(&self.id, title, back, on, step, cx))
+            .when(self.header, |view| {
+                view.child(head(&self.id, title, back, on, step, cx))
+            })
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .child(names(&days, today, &zones, window, cx))
+                    .child(names(
+                        &self.id,
+                        &days,
+                        today,
+                        self.day,
+                        self.on_select,
+                        &zones,
+                        window,
+                        cx,
+                    ))
                     .child(whole)
                     .child(div().flex_1().min_h_0().child(grid)),
             )

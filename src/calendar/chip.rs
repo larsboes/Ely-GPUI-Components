@@ -16,9 +16,11 @@ use crate::{
 
 /// Event `event`'s color: the chart color at its hue.
 pub(crate) fn tint(event: &Event, cx: &App) -> Hsla {
-    cx.theme()
-        .colors
-        .hue(event.hue, format_args!("event {}", event.key))
+    event.color.unwrap_or_else(|| {
+        cx.theme()
+            .colors
+            .hue(event.hue, format_args!("event {}", event.key))
+    })
 }
 
 /// An event in a line: a dot, the hour it starts and its title; or, for whole days, its title on a wash of its color. Pressable with `on_click`.
@@ -99,7 +101,12 @@ impl RenderOnce for EventChip {
             .when(self.before, |chip| chip.rounded_l_none())
             .when(self.after, |chip| chip.rounded_r_none())
             .border_1()
-            .border_color(gpui::transparent_black())
+            .border_color(if self.event.selected {
+                colors.focus
+            } else {
+                gpui::transparent_black()
+            })
+            .when(self.event.tentative, |chip| chip.opacity(0.6))
             .focus_ring(cx)
             .text_size(theme.text_size(TextSize::Xs))
             .line_height(relative(1.0))

@@ -24,6 +24,7 @@ pub struct EventCard {
     event: Event,
     zone: Option<TimeZone>,
     on_click: Option<Run>,
+    pub(super) drag: Option<super::grid::drag::Held>,
 }
 
 impl EventCard {
@@ -33,6 +34,7 @@ impl EventCard {
             event,
             zone: None,
             on_click: None,
+            drag: None,
         }
     }
 
@@ -75,9 +77,21 @@ impl RenderOnce for EventCard {
             .py_1()
             .rounded(theme.radius(Radius::Sm))
             .border_1()
-            .border_color(gpui::transparent_black())
+            .border_color(if self.event.selected {
+                colors.focus
+            } else {
+                gpui::transparent_black()
+            })
+            .when(self.event.tentative, |card| card.opacity(0.6))
             .bg(tint.alpha(0.14))
             .line_height(relative(1.25))
+            .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                window.prevent_default();
+                cx.stop_propagation();
+            })
+            .when_some(self.drag, |card, drag| {
+                card.on_drag(drag, |_, _, _, cx| cx.new(|_| gpui::EmptyView))
+            })
             .when_some(self.on_click, |card, on_click| {
                 let key = self.event.key.clone();
                 card.tab_index(0)

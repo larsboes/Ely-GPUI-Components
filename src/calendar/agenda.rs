@@ -56,6 +56,8 @@ pub struct AgendaView {
     zone: Option<TimeZone>,
     today: Option<Date>,
     on_event: Option<OnValue>,
+    on_select: Option<OnValue>,
+    selected: Option<SharedString>,
 }
 
 impl AgendaView {
@@ -73,7 +75,23 @@ impl AgendaView {
             zone: None,
             today: None,
             on_event: None,
+            on_select: None,
+            selected: None,
         }
+    }
+
+    /// Uses the owner's selected event.
+    pub fn selected(mut self, key: Option<SharedString>) -> Self {
+        self.selected = key;
+        self
+    }
+    /// Reports an event selected by pointer or keyboard.
+    pub fn on_select(
+        mut self,
+        handler: impl Fn(&SharedString, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_select = Some(Rc::new(handler));
+        self
     }
 
     /// The zone its days and hours read in; the system's otherwise.
@@ -153,15 +171,21 @@ impl RenderOnce for AgendaView {
         let owners = Rc::new(owners);
         let pick: OnValue = {
             let picked = picked.clone();
-            Rc::new(move |key, _, cx| {
+            let owners = owners.clone();
+            let on_select = self.on_select;
+            Rc::new(move |key, window, cx| {
                 picked.update(cx, |picked, cx| {
                     *picked = Some(key.clone());
                     cx.notify();
-                })
+                });
+                if let Some(handler) = &on_select {
+                    handler(&owners[key], window, cx);
+                }
             })
         };
         let open: OnValue = {
             let (id, on_event) = (self.id.clone(), self.on_event);
+            let owners = owners.clone();
             Rc::new(move |key, window, cx| {
                 let event = owners.get(key).expect("a row names its event");
                 log::info!("agenda view {id:?}: open {event}");
@@ -173,7 +197,17 @@ impl RenderOnce for AgendaView {
         div()
             .child(
                 sections
-                    .selected(picked.read(cx).clone())
+                    .selected(
+                        self.selected
+                            .as_ref()
+                            .and_then(|event| {
+                                owners
+                                    .iter()
+                                    .find(|(_, owner)| *owner == event)
+                                    .map(|(key, _)| key.clone())
+                            })
+                            .or_else(|| picked.read(cx).clone()),
+                    )
                     .on_select(pick)
                     .on_activate(open),
             )

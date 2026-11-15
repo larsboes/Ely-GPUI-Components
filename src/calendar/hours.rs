@@ -1,4 +1,4 @@
-use jiff::{SignedDuration, Timestamp, civil::Date, tz::TimeZone};
+use jiff::{Timestamp, civil::Date, tz::TimeZone};
 
 use super::event::{Event, When};
 
@@ -13,13 +13,15 @@ pub(crate) fn minutes(event: &Event, day: Date, zone: &TimeZone) -> Option<(i64,
     let When::Timed { start, end } = event.when else {
         return None;
     };
-    let midnight = day
-        .to_zoned(zone.clone())
-        .expect("the zone holds the day")
-        .timestamp();
-    let from = start.duration_since(midnight).as_mins();
-    let to = end.duration_since(midnight).as_mins();
-    (from < DAY && to > 0).then(|| (from.max(0), to.min(DAY)))
+    let start = start.to_zoned(zone.clone());
+    let end = end.to_zoned(zone.clone());
+    if start.date() > day || end.date() < day {
+        return None;
+    }
+    let clock = |at: &jiff::Zoned| i64::from(at.hour()) * 60 + i64::from(at.minute());
+    let from = if start.date() < day { 0 } else { clock(&start) };
+    let to = if end.date() > day { DAY } else { clock(&end) };
+    (to > from).then_some((from, to))
 }
 
 /// A block in a day column: which event, its minutes, and its lane among the lanes of the blocks it overlaps.
@@ -96,21 +98,38 @@ pub(crate) fn dragged(from: f32, to: f32, hour: f32) -> Option<(i64, i64)> {
     (end - start >= SNAP).then_some((start, end))
 }
 
-/// The moment `minutes` after `day`'s midnight in `zone`.
-pub(crate) fn moment(day: Date, minutes: i64, zone: &TimeZone) -> Timestamp {
-    let midnight = day
-        .to_zoned(zone.clone())
-        .expect("the zone holds the day")
-        .timestamp();
-    midnight + SignedDuration::from_mins(minutes)
+/// Resolves a wall-clock slot, rejecting a missing or repeated local time.
+pub(crate) fn try_moment(day: Date, minutes: i64, zone: &TimeZone) -> Option<Timestamp> {
+    let day = day
+        .checked_add(jiff::Span::new().days(minutes.div_euclid(DAY)))
+        .ok()?;
+    let minute = minutes.rem_euclid(DAY);
+    let civil = day.at((minute / 60) as i8, (minute % 60) as i8, 0, 0);
+    zone.to_ambiguous_timestamp(civil).unambiguous().ok()
 }
 
 #[cfg(test)]
 mod tests {
     use jiff::{Timestamp, civil::date, tz::TimeZone};
 
-    use super::{Block, blocks, dragged, minutes, moment, snap};
+    use super::{Block, blocks, dragged, minutes, snap, try_moment};
     use crate::calendar::Event;
+
+    #[test]
+    fn dst_geometry_uses_wall_clock_and_rejects_ambiguous_targets() {
+        let zone = TimeZone::get("Europe/Berlin").unwrap();
+        for day in [date(2026, 3, 29), date(2026, 10, 25)] {
+            let start = try_moment(day, 9 * 60, &zone).unwrap();
+            let end = try_moment(day, 10 * 60 + 30, &zone).unwrap();
+            let event = Event::timed("dst", "DST", start, end, 0);
+            assert_eq!(minutes(&event, day, &zone), Some((540, 630)));
+            assert_eq!(start.to_zoned(zone.clone()).hour(), 9);
+            assert!(try_moment(day, 150, &zone).is_none());
+            let next_midnight = try_moment(day, 1440, &zone).unwrap().to_zoned(zone.clone());
+            assert_eq!(next_midnight.hour(), 0);
+            assert_eq!(next_midnight.date(), day.tomorrow().unwrap());
+        }
+    }
 
     fn at(day: i8, hour: i8, minute: i8) -> Timestamp {
         date(2026, 9, day)
@@ -176,7 +195,7 @@ mod tests {
         assert_eq!(snap(-30.0), 0);
         assert_eq!(snap(25.0 * 60.0), 24 * 60);
         assert_eq!(
-            moment(date(2026, 9, 22), 9 * 60 + 15, &TimeZone::UTC),
+            try_moment(date(2026, 9, 22), 9 * 60 + 15, &TimeZone::UTC).unwrap(),
             at(22, 9, 15)
         );
     }
