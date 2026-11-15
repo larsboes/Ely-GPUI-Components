@@ -89,7 +89,8 @@ fn press(key: &str, cx: &mut VisualTestContext) {
     cx.simulate_keystrokes(key);
     settle(cx);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse(key).expect("a key"),
+        keystroke: Keystroke::parse_with_os(key, crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
 }
@@ -149,9 +150,19 @@ fn the_owner_reads_what_is_shown(cx: &mut TestAppContext) {
     push(&view, Toast::new("Denied").severity(Severity::Danger), cx);
     let toaster = view.read_with(cx, |desk, _| desk.toaster.clone());
     let shown = |cx: &mut VisualTestContext| toaster.read_with(cx, |toaster, _| toaster.shown());
-    assert_eq!(shown(cx), [("Saved".into(), None), ("Denied".into(), Some(Severity::Danger))]);
+    assert_eq!(
+        shown(cx),
+        [
+            ("Saved".into(), None),
+            ("Denied".into(), Some(Severity::Danger))
+        ]
+    );
     toaster.update(cx, |toaster, cx| toaster.dismiss(first, cx));
-    assert_eq!(shown(cx), [("Denied".into(), Some(Severity::Danger))], "a leaving toast is not shown");
+    assert_eq!(
+        shown(cx),
+        [("Denied".into(), Some(Severity::Danger))],
+        "a leaving toast is not shown"
+    );
 }
 
 #[gpui::test]
@@ -177,6 +188,8 @@ fn the_pointer_on_the_stack_holds_the_clock(cx: &mut TestAppContext) {
 fn typing_under_a_resting_pointer_keeps_the_hold(cx: &mut TestAppContext) {
     let (view, cx) = desk(cx);
     let id = push(&view, Toast::new("Saved"), cx);
+    cx.executor().advance_clock(Duration::from_millis(400));
+    settle(cx);
     let screen = cx.update(|window, _| window.viewport_size());
     let on_toast = point(screen.width - px(120.0), screen.height - px(48.0));
     cx.simulate_mouse_move(on_toast, None, Modifiers::none());
@@ -267,8 +280,9 @@ fn a_leaving_toast_runs_its_undo_once(cx: &mut TestAppContext) {
     cx.update(|_, cx| Theme::update(cx, |theme| theme.reduced_motion = false));
     let undo = view.update(cx, |desk, cx| desk.note(cx, "undo"));
     push(&view, Toast::new("Deleted").undo(undo), cx);
-    // Animations run on the wall clock; let the toast finish rising.
+    // GPUI animations run on the executor clock; Ely's own timers on the wall clock.
     std::thread::sleep(Duration::from_millis(400));
+    cx.executor().advance_clock(Duration::from_millis(400));
     settle(cx);
     let screen = cx.update(|window, _| window.viewport_size());
     let on_undo = point(screen.width - px(78.0), screen.height - px(49.0));

@@ -105,7 +105,8 @@ fn enter_on_a_clear_button_clears_its_own_field(cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.simulate_keystrokes("enter");
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").unwrap(),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .unwrap(),
     });
     assert_eq!([text(&fields[0], cx), text(&fields[1], cx)], ["", "kept"]);
 }

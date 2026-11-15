@@ -7,21 +7,26 @@ Every component runs live at https://elygpui.com, compiled to WebAssembly.
 
 Status: early. `TASKS.md` tracks every component, chapter by chapter. To help, see `CONTRIBUTING.md`.
 
+**This fork** (branch `sjel`) builds on [GPUI Kit](https://gpui-kit.com) 0.9.1 instead of a
+direct `gpui-pre` pin, so it follows whichever engine the application selects: `gpui-pre`
+by default, GPUI Fast with the `gpui-fast` feature. It is maintained for
+[Sjel](https://github.com/larsboes/Sjel); upstream is
+[ZacharyZhang-NY/Ely-GPUI-Components](https://github.com/ZacharyZhang-NY/Ely-GPUI-Components).
+
 ## Use
 
 ```toml
 [dependencies]
-ely-gpui-component = { git = "https://github.com/ZacharyZhang-NY/Ely-GPUI-Components" }
-gpui = { package = "gpui-pre", version = "=0.3.8" }
-gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit"] }
+ely-gpui-component = { git = "https://github.com/larsboes/Ely-GPUI-Components", branch = "sjel" }
+gpui-kit = { version = "=0.9.1", default-features = false }
 ```
 
 ```rust
 use ely_gpui_component::{Assets, theme::{Mode, Theme}};
-use gpui::App;
+use gpui_kit::App;
 
 fn main() {
-    gpui_platform::application().with_assets(Assets).run(|cx: &mut App| {
+    gpui_kit::platform::application().with_assets(Assets).run(|cx: &mut App| {
         ely_gpui_component::init(cx).expect("Ely failed to start");
         Theme::set_mode(Mode::Dark, cx);
     });

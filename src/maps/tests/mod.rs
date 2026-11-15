@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashSet, f64::consts::LOG2_E, rc::Rc, sync
 
 use gpui::{
     AnyElement, Context, Entity, FocusHandle, ImageSource, IntoElement, KeyUpEvent, Keystroke,
-    Modifiers, MouseButton, ParentElement, Render, RenderImage, ScrollDelta, ScrollWheelEvent,
+    Modifiers, MouseButton, ParentElement, Render, RenderImage, ScrollDelta, ScrollEvent,
     SharedString, Styled, TestAppContext, TouchPhase, VisualTestContext, Window, div, point, px,
 };
 
@@ -136,7 +136,8 @@ fn press(key: &str, cx: &mut VisualTestContext) {
     cx.simulate_keystrokes(key);
     settle(cx);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse(key).expect("a key"),
+        keystroke: Keystroke::parse_with_os(key, crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
 }
@@ -179,7 +180,8 @@ fn a_drag_pans_the_map_with_the_pointer(cx: &mut TestAppContext) {
 fn command_and_the_wheel_zoom_about_the_pointer(cx: &mut TestAppContext) {
     let (host, cx) = stage(map, cx);
     let place = start().to_geo((300.0, 60.0), SIZE, TILE);
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
         position: window_at((300.0, 60.0)),
         delta: ScrollDelta::Pixels(point(px(0.0), px(-240.0))),
         modifiers: Modifiers::command(),
@@ -193,7 +195,8 @@ fn command_and_the_wheel_zoom_about_the_pointer(cx: &mut TestAppContext) {
         view.zoom
     );
     assert!(near(view.to_view(place, SIZE, TILE), (300.0, 60.0)));
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
         position: window_at((300.0, 60.0)),
         delta: ScrollDelta::Pixels(point(px(0.0), px(-50.0))),
         modifiers: Modifiers::none(),

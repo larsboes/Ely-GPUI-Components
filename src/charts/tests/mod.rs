@@ -207,7 +207,8 @@ fn tab_reaches_a_legend_entry_and_enter_toggles_it(cx: &mut TestAppContext) {
     settle(cx);
     cx.simulate_keystrokes("enter");
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").expect("a key"),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
     assert_eq!(*heard.borrow(), ["Held out"]);

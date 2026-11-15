@@ -1,7 +1,7 @@
 use gpui::{
-    App, ClipboardItem, Context, CursorStyle, InteractiveElement, IntoElement, KeyBinding,
-    MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Render, Role,
-    StatefulInteractiveElement, Styled, Window, actions, div, prelude::*,
+    App, ClipboardItem, Context, CursorStyle, InteractiveElement, IntoElement, MouseButton,
+    MouseDownEvent, MouseMoveEvent, ParentElement, Render, Role, StatefulInteractiveElement,
+    Styled, Window, actions, div, prelude::*,
 };
 
 use super::{
@@ -56,53 +56,64 @@ pub(crate) fn bind_keys(cx: &mut App) {
         "ctrl"
     };
     let mut bindings = vec![
-        KeyBinding::new("backspace", Backspace, Some(CONTEXT)),
-        KeyBinding::new("delete", Delete, Some(CONTEXT)),
-        KeyBinding::new(&format!("{word}-backspace"), DeleteWordLeft, Some(CONTEXT)),
-        KeyBinding::new("left", Left, Some(CONTEXT)),
-        KeyBinding::new("right", Right, Some(CONTEXT)),
-        KeyBinding::new("up", Up, Some(CONTEXT)),
-        KeyBinding::new("down", Down, Some(CONTEXT)),
-        KeyBinding::new("shift-left", SelectLeft, Some(CONTEXT)),
-        KeyBinding::new("shift-right", SelectRight, Some(CONTEXT)),
-        KeyBinding::new("shift-up", SelectUp, Some(CONTEXT)),
-        KeyBinding::new("shift-down", SelectDown, Some(CONTEXT)),
-        KeyBinding::new(&format!("{word}-left"), WordLeft, Some(CONTEXT)),
-        KeyBinding::new(&format!("{word}-right"), WordRight, Some(CONTEXT)),
-        KeyBinding::new(&format!("{word}-shift-left"), SelectWordLeft, Some(CONTEXT)),
-        KeyBinding::new(
+        crate::bind(cx, "backspace", Backspace, Some(CONTEXT)),
+        crate::bind(cx, "delete", Delete, Some(CONTEXT)),
+        crate::bind(
+            cx,
+            &format!("{word}-backspace"),
+            DeleteWordLeft,
+            Some(CONTEXT),
+        ),
+        crate::bind(cx, "left", Left, Some(CONTEXT)),
+        crate::bind(cx, "right", Right, Some(CONTEXT)),
+        crate::bind(cx, "up", Up, Some(CONTEXT)),
+        crate::bind(cx, "down", Down, Some(CONTEXT)),
+        crate::bind(cx, "shift-left", SelectLeft, Some(CONTEXT)),
+        crate::bind(cx, "shift-right", SelectRight, Some(CONTEXT)),
+        crate::bind(cx, "shift-up", SelectUp, Some(CONTEXT)),
+        crate::bind(cx, "shift-down", SelectDown, Some(CONTEXT)),
+        crate::bind(cx, &format!("{word}-left"), WordLeft, Some(CONTEXT)),
+        crate::bind(cx, &format!("{word}-right"), WordRight, Some(CONTEXT)),
+        crate::bind(
+            cx,
+            &format!("{word}-shift-left"),
+            SelectWordLeft,
+            Some(CONTEXT),
+        ),
+        crate::bind(
+            cx,
             &format!("{word}-shift-right"),
             SelectWordRight,
             Some(CONTEXT),
         ),
-        KeyBinding::new("home", Home, Some(CONTEXT)),
-        KeyBinding::new("end", End, Some(CONTEXT)),
-        KeyBinding::new("shift-home", SelectHome, Some(CONTEXT)),
-        KeyBinding::new("shift-end", SelectEnd, Some(CONTEXT)),
-        KeyBinding::new("secondary-a", SelectAll, Some(CONTEXT)),
-        KeyBinding::new("secondary-c", Copy, Some(CONTEXT)),
-        KeyBinding::new("secondary-x", Cut, Some(CONTEXT)),
-        KeyBinding::new("secondary-z", Undo, Some(CONTEXT)),
-        KeyBinding::new("secondary-shift-z", Redo, Some(CONTEXT)),
-        KeyBinding::new("enter", Enter, Some(CONTEXT)),
-        KeyBinding::new("shift-enter", Newline, Some(CONTEXT)),
-        KeyBinding::new("secondary-enter", Submit, Some(CONTEXT)),
-        KeyBinding::new("secondary-enter", Submit, Some(FORM_CONTEXT)),
+        crate::bind(cx, "home", Home, Some(CONTEXT)),
+        crate::bind(cx, "end", End, Some(CONTEXT)),
+        crate::bind(cx, "shift-home", SelectHome, Some(CONTEXT)),
+        crate::bind(cx, "shift-end", SelectEnd, Some(CONTEXT)),
+        crate::bind(cx, "secondary-a", SelectAll, Some(CONTEXT)),
+        crate::bind(cx, "secondary-c", Copy, Some(CONTEXT)),
+        crate::bind(cx, "secondary-x", Cut, Some(CONTEXT)),
+        crate::bind(cx, "secondary-z", Undo, Some(CONTEXT)),
+        crate::bind(cx, "secondary-shift-z", Redo, Some(CONTEXT)),
+        crate::bind(cx, "enter", Enter, Some(CONTEXT)),
+        crate::bind(cx, "shift-enter", Newline, Some(CONTEXT)),
+        crate::bind(cx, "secondary-enter", Submit, Some(CONTEXT)),
+        crate::bind(cx, "secondary-enter", Submit, Some(FORM_CONTEXT)),
     ];
     // The browser's paste event reaches the input handler.
     if !cfg!(target_family = "wasm") {
-        bindings.push(KeyBinding::new("secondary-v", Paste, Some(CONTEXT)));
+        bindings.push(crate::bind(cx, "secondary-v", Paste, Some(CONTEXT)));
     }
     if cfg!(target_os = "macos") {
         bindings.extend([
-            KeyBinding::new("cmd-left", Home, Some(CONTEXT)),
-            KeyBinding::new("cmd-right", End, Some(CONTEXT)),
-            KeyBinding::new("cmd-shift-left", SelectHome, Some(CONTEXT)),
-            KeyBinding::new("cmd-shift-right", SelectEnd, Some(CONTEXT)),
-            KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, Some(CONTEXT)),
+            crate::bind(cx, "cmd-left", Home, Some(CONTEXT)),
+            crate::bind(cx, "cmd-right", End, Some(CONTEXT)),
+            crate::bind(cx, "cmd-shift-left", SelectHome, Some(CONTEXT)),
+            crate::bind(cx, "cmd-shift-right", SelectEnd, Some(CONTEXT)),
+            crate::bind(cx, "ctrl-cmd-space", ShowCharacterPalette, Some(CONTEXT)),
         ]);
     } else {
-        bindings.push(KeyBinding::new("ctrl-y", Redo, Some(CONTEXT)));
+        bindings.push(crate::bind(cx, "ctrl-y", Redo, Some(CONTEXT)));
     }
     cx.bind_keys(bindings);
 }

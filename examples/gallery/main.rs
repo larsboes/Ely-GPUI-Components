@@ -202,7 +202,7 @@ fn main() -> Result<()> {
     } = parse_args()?;
     // A script aims across its page; stories hold part.
     let scripted = start.narrow.is_none() && start.story.is_none();
-    gpui_platform::application()
+    gpui::platform::application()
         .with_assets(GalleryAssets)
         .run(move |cx: &mut App| {
             let window = match launch(start, cx) {

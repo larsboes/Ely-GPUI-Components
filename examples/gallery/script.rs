@@ -138,8 +138,11 @@ pub async fn play(
                         }
                         ch => ch.to_string(),
                     };
-                    let stroke =
-                        Keystroke::parse(&key).with_context(|| format!("bad key {key}"))?;
+                    let stroke = Keystroke::parse_with_os(
+                        &key,
+                        ely_gpui_component::theme::Platform::current().os(),
+                    )
+                    .with_context(|| format!("bad key {key}"))?;
                     press(window.into(), stroke, cx)?;
                     cx.background_executor()
                         .timer(Duration::from_millis(16))

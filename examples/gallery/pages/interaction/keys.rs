@@ -49,7 +49,9 @@ pub fn keys(window: &mut Window, cx: &mut App) -> impl IntoElement + use<> {
                 heard.pending = window.pending_input_keystrokes().map(|strokes| {
                     strokes
                         .iter()
-                        .map(|stroke| stroke.unparse())
+                        .map(|stroke| {
+                            stroke.unparse(ely_gpui_component::theme::Platform::current().os())
+                        })
                         .collect::<Vec<_>>()
                         .join(" ")
                         .into()

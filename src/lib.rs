@@ -73,6 +73,25 @@ pub fn init_for_tests(cx: &mut App) {
     setup(cx);
 }
 
+/// A key binding for runtime keystrokes or the `secondary-` alias, resolved for the host OS.
+///
+/// GPUI's `KeyBinding::new` takes only static strings and refuses `secondary-` (gpui-pre 0.3.12,
+/// `keymap/binding.rs`); `KeyBinding::load` resolves both.
+pub(crate) fn bind<A: gpui::Action>(
+    cx: &gpui::App,
+    keystrokes: &str,
+    action: A,
+    context: Option<&str>,
+) -> KeyBinding {
+    let predicate = context.map(|context| {
+        gpui::KeyBindingContextPredicate::parse(context)
+            .expect("Ely key context parses")
+            .into()
+    });
+    KeyBinding::load(keystrokes, Box::new(action), predicate, false, None, cx)
+        .unwrap_or_else(|error| panic!("Ely key binding {keystrokes:?}: {error}"))
+}
+
 /// The theme and key bindings.
 fn setup(cx: &mut App) {
     theme::Theme::init(cx);
@@ -94,6 +113,7 @@ fn setup(cx: &mut App) {
 mod tests {
     use gpui::{AppContext, TestAppContext};
 
+    #[cfg(not(feature = "gpui-fast"))]
     #[gpui::test]
     #[should_panic(expected = "leaked handles")]
     fn a_leaked_entity_fails_its_test(cx: &mut TestAppContext) {

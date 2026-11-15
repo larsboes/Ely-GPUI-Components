@@ -129,7 +129,8 @@ fn tab_reaches_each_span_and_enter_picks_it(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("enter");
     settle(cx);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").expect("a key"),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
     assert_eq!(
@@ -219,7 +220,8 @@ fn a_zoom_past_the_finest_range_stays_put(cx: &mut TestAppContext) {
     let (owner, cx) = cx.add_window_view(move |_, _| Zooming(start));
     settle(cx);
     for _ in 0..2 {
-        cx.simulate_event(gpui::ScrollWheelEvent {
+        cx.simulate_event(gpui::ScrollEvent {
+            source: gpui::ScrollSource::Pointer,
             position: point(px(250.0), px(30.0)),
             delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(400.0))),
             modifiers: Modifiers::none(),
@@ -237,7 +239,8 @@ fn a_wheel_too_large_for_a_zoom_stays_put(cx: &mut TestAppContext) {
     let (owner, cx) = cx.add_window_view(|_, _| Zooming((0.0, 25.0)));
     settle(cx);
     for pixels in [300_000.0, -300_000.0] {
-        cx.simulate_event(gpui::ScrollWheelEvent {
+        cx.simulate_event(gpui::ScrollEvent {
+            source: gpui::ScrollSource::Pointer,
             position: point(px(250.0), px(30.0)),
             delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(pixels))),
             modifiers: Modifiers::none(),

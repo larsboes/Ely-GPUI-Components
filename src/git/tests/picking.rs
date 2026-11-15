@@ -165,7 +165,8 @@ fn press_first(cx: &mut VisualTestContext) {
     cx.simulate_keystrokes("enter");
     settle(cx);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").expect("a key"),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
 }
@@ -205,7 +206,8 @@ fn a_blame_run_picks_its_commit_from_the_keyboard(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("enter");
     settle(cx);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").expect("a key"),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
     assert_eq!(

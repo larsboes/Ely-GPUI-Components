@@ -1,6 +1,6 @@
 use gpui::{
-    Context, IntoElement, Modifiers, ParentElement, Render, ScrollDelta, ScrollWheelEvent,
-    SharedString, Styled, TestAppContext, TouchPhase, VisualTestContext, Window, div, point, px,
+    Context, IntoElement, Modifiers, ParentElement, Render, ScrollDelta, ScrollEvent, SharedString,
+    Styled, TestAppContext, TouchPhase, VisualTestContext, Window, div, point, px,
 };
 
 use super::setup;
@@ -109,7 +109,8 @@ fn the_chosen_tab_scrolls_in_once_and_a_manual_scroll_stays(cx: &mut TestAppCont
         cx.notify();
     });
     settle(cx);
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
         position: point(px(60.0), px(16.0)),
         delta: ScrollDelta::Pixels(point(px(5000.0), px(0.0))),
         modifiers: Modifiers::none(),

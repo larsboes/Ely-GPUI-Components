@@ -3,8 +3,8 @@ use std::{cell::Cell, rc::Rc, time::Duration};
 use gpui::{
     AppContext as _, Bounds, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
     KeyBinding, KeyUpEvent, Keystroke, Modifiers, ParentElement, Pixels, Render, ScrollDelta,
-    ScrollWheelEvent, Styled, TestAppContext, TouchPhase, VisualTestContext, Window, canvas, div,
-    point, px,
+    ScrollEvent, Styled, TestAppContext, TouchPhase, VisualTestContext, Window, canvas, div, point,
+    px,
 };
 
 mod guides;
@@ -170,7 +170,8 @@ pub(super) fn press(key: &str, cx: &mut VisualTestContext) {
     cx.simulate_keystrokes(key);
     settle(cx);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse(key).expect("a key"),
+        keystroke: Keystroke::parse_with_os(key, crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
 }
@@ -447,7 +448,8 @@ fn a_tall_dialog_body_keeps_its_height_and_scrolls(cx: &mut TestAppContext) {
     let middle = cx
         .update(|window, _| window.viewport_size())
         .map(|side| side / 2.0);
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
         position: point(middle.width, middle.height),
         delta: ScrollDelta::Pixels(point(px(0.0), px(-300.0))),
         modifiers: Modifiers::none(),
@@ -487,6 +489,7 @@ fn an_opening_dialog_rises_in_the_box_its_scrim_centers(cx: &mut TestAppContext)
     let top = |cx: &mut VisualTestContext| cx.debug_bounds("rising-body").expect("the body").top();
     let first = top(cx);
     std::thread::sleep(Duration::from_millis(250));
+    cx.executor().advance_clock(Duration::from_millis(250));
     settle(cx);
     let lift = first - top(cx);
     assert!(

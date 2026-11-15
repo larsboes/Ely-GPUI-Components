@@ -38,7 +38,7 @@ impl Render for Hello {
 }
 
 fn main() {
-    gpui_platform::application()
+    gpui::platform::application()
         .with_assets(Assets)
         .run(|cx: &mut App| {
             ely_gpui_component::init(cx).expect("Ely failed to start");

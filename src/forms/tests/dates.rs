@@ -186,7 +186,8 @@ fn the_month_buttons_carry_the_cursor(cx: &mut TestAppContext) {
     });
     cx.simulate_keystrokes("enter");
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").unwrap(),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .unwrap(),
     });
     cx.update(|window, cx| {
         window.focus_prev(cx);

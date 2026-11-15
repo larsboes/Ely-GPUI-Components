@@ -324,7 +324,8 @@ fn the_keyboard_walks_and_picks_tiles(cx: &mut TestAppContext) {
 fn press(key: &str, cx: &mut VisualTestContext) {
     cx.simulate_keystrokes(key);
     cx.simulate_event(gpui::KeyUpEvent {
-        keystroke: gpui::Keystroke::parse(key).expect("a key"),
+        keystroke: gpui::Keystroke::parse_with_os(key, crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
 }
@@ -389,7 +390,8 @@ fn a_wheel_on_one_pane_takes_the_other_along(cx: &mut TestAppContext) {
         .expect("the right pane")
         .origin
         .y;
-    cx.simulate_event(gpui::ScrollWheelEvent {
+    cx.simulate_event(gpui::ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
         position: at(80.0, 100.0),
         delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(-300.0))),
         modifiers: Modifiers::none(),

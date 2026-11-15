@@ -7,6 +7,15 @@ pub enum Platform {
 }
 
 impl Platform {
+    /// The GPUI operating system that names this platform's keys.
+    pub fn os(self) -> gpui::OperatingSystem {
+        match self {
+            Platform::Mac => gpui::OperatingSystem::Mac,
+            Platform::Windows => gpui::OperatingSystem::Windows,
+            Platform::Linux => gpui::OperatingSystem::Linux,
+        }
+    }
+
     /// The system this build targets, where the theme starts.
     pub fn current() -> Self {
         if cfg!(target_os = "macos") {

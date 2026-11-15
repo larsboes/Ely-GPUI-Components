@@ -31,7 +31,7 @@ struct Radios {
 
 fn release(key: &str, cx: &mut VisualTestContext) {
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse(key).unwrap(),
+        keystroke: Keystroke::parse_with_os(key, crate::theme::Platform::current().os()).unwrap(),
     });
 }
 
@@ -245,7 +245,8 @@ fn space_toggles_a_focused_checkbox(cx: &mut TestAppContext) {
     cx.update(|window, cx| window.focus_next(cx));
     cx.simulate_keystrokes("space");
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("space").unwrap(),
+        keystroke: Keystroke::parse_with_os("space", crate::theme::Platform::current().os())
+            .unwrap(),
     });
     assert!(view.read_with(cx, |view, _| view.on));
 }

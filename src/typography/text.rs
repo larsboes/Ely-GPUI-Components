@@ -78,7 +78,11 @@ text_kind!(Title, Xl, SEMIBOLD, fg, 1.3);
 text_kind!(Subtitle, Lg, NORMAL, fg_muted, 1.45);
 text_kind!(
     /// Reading text. Loose leading.
-    Paragraph, Md, NORMAL, fg, 1.6
+    Paragraph,
+    Md,
+    NORMAL,
+    fg,
+    1.6
 );
 text_kind!(Label, Base, MEDIUM, fg, 1.4);
 text_kind!(Caption, Sm, NORMAL, fg_muted, 1.45);

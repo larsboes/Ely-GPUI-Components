@@ -162,7 +162,8 @@ fn enter_presses_the_banner_button_inside_the_editor(cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.simulate_keystrokes("enter");
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").expect("a key"),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     cx.run_until_parked();
     assert!(!editor.read_with(cx, |editor, _| editor.is_read_only()));

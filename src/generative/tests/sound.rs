@@ -219,7 +219,8 @@ fn long(cx: &mut TestAppContext) -> (Heard, &mut gpui::VisualTestContext) {
 #[gpui::test]
 fn a_long_strip_scrolls_sideways(cx: &mut TestAppContext) {
     let (heard, cx) = long(cx);
-    cx.simulate_event(gpui::ScrollWheelEvent {
+    cx.simulate_event(gpui::ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
         position: point(px(140.0), px(50.0)),
         delta: gpui::ScrollDelta::Pixels(point(px(-2000.0), px(0.0))),
         modifiers: Modifiers::none(),

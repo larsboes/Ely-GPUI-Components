@@ -127,7 +127,8 @@ fn synced(bench: &Bench, _: Entity<Bench>) -> AnyElement {
 #[gpui::test]
 fn a_leader_pane_that_left_syncs_nothing(cx: &mut TestAppContext) {
     let (host, cx) = bench(synced, cx);
-    cx.simulate_event(gpui::ScrollWheelEvent {
+    cx.simulate_event(gpui::ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
         position: at(270.0, 100.0),
         delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(-300.0))),
         modifiers: Modifiers::none(),

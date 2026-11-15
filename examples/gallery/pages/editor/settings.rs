@@ -197,7 +197,7 @@ pub fn settings_and_keys(window: &mut Window, cx: &mut App) -> impl IntoElement 
                 .on_bind(move |command, stroke, _, cx| {
                     let mut next = bind.read(cx).clone();
                     if let Some(binding) = next.iter_mut().find(|binding| binding.command == *command) {
-                        binding.keys = stroke.map(|stroke| stroke.unparse().into());
+                        binding.keys = stroke.map(|stroke| stroke.unparse(ely_gpui_component::theme::Platform::current().os()).into());
                         binding.source = KeySource::User;
                     }
                     set(&bind, next, cx);

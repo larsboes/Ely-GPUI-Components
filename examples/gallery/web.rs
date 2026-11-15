@@ -6,8 +6,8 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, anyhow, bail};
+use gpui::web::{CanvasFontFallback, WebBackendPreference, WebPlatform};
 use gpui::{Application, AsyncApp, SharedString, WindowHandle};
-use gpui_web::{CanvasFontFallback, WebBackendPreference, WebPlatform};
 use wasm_bindgen::prelude::*;
 use web_sys::UrlSearchParams;
 
@@ -76,7 +76,7 @@ fn read(search: &str) -> Result<Start> {
 /// The gallery in a browser: one window on a canvas.
 #[wasm_bindgen(start)]
 pub fn start() {
-    gpui_platform::web_init();
+    gpui::platform::web_init();
     let search = web_sys::window()
         .expect("a browser window")
         .location()

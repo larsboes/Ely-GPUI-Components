@@ -110,7 +110,7 @@ impl Render for Rows {
 fn press(key: &str, cx: &mut VisualTestContext) {
     cx.simulate_keystrokes(key);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse(key).unwrap(),
+        keystroke: Keystroke::parse_with_os(key, crate::theme::Platform::current().os()).unwrap(),
     });
 }
 

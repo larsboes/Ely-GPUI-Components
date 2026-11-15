@@ -2,9 +2,8 @@ use std::time::Duration;
 
 use gpui::{
     AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    KeyBinding, KeyUpEvent, Keystroke, Modifiers, ParentElement, Render, ScrollDelta,
-    ScrollWheelEvent, Styled, TestAppContext, TouchPhase, VisualTestContext, Window, div, point,
-    px,
+    KeyBinding, KeyUpEvent, Keystroke, Modifiers, ParentElement, Render, ScrollDelta, ScrollEvent,
+    Styled, TestAppContext, TouchPhase, VisualTestContext, Window, div, point, px,
 };
 
 use crate::{
@@ -242,7 +241,8 @@ fn the_logger_lists_events(cx: &mut TestAppContext) {
         .debug_bounds("event-release left at 20, 30")
         .expect("its release");
     assert!(released.top() < pressed.top(), "newest first");
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
         position: point(px(30.0), px(40.0)),
         delta: ScrollDelta::Pixels(point(px(0.0), px(-24.0))),
         modifiers: Modifiers::none(),
@@ -251,7 +251,8 @@ fn the_logger_lists_events(cx: &mut TestAppContext) {
     assert!(shown("event-wheel 0, -24 px", cx));
     cx.simulate_keystrokes("a");
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("a").expect("a key"),
+        keystroke: Keystroke::parse_with_os("a", crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     assert!(shown("event-key down a", cx));
     assert!(shown("event-key up a", cx));

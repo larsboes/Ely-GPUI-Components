@@ -63,7 +63,8 @@ fn columns_past_the_table_scroll_sideways_and_a_plain_wheel_leaves_them(cx: &mut
             _ => px(-2000.0),
         };
         for delta in [point(px(0.0), plain), point(px(-2000.0), px(0.0))] {
-            cx.simulate_event(gpui::ScrollWheelEvent {
+            cx.simulate_event(gpui::ScrollEvent {
+                source: gpui::ScrollSource::Pointer,
                 position: cell,
                 delta: gpui::ScrollDelta::Pixels(delta),
                 modifiers: Modifiers::none(),
@@ -107,7 +108,8 @@ fn tab_reaches_a_header_and_enter_sorts_by_it(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("enter");
     settle(cx);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").expect("a key"),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
     edit_at(point(px(120.0), px(54.0)), "x", cx);

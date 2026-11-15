@@ -47,7 +47,8 @@ fn a_fold_opens_from_the_keyboard(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("enter");
     settle(cx);
     cx.simulate_event(KeyUpEvent {
-        keystroke: Keystroke::parse("enter").expect("a key"),
+        keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+            .expect("a key"),
     });
     settle(cx);
     assert_eq!(view.read_with(cx, |folded, _| folded.opened.clone()), [0]);
@@ -150,7 +151,8 @@ fn changed_lines_and_hunks_answer_presses(cx: &mut TestAppContext) {
         cx.simulate_keystrokes(key);
         settle(cx);
         cx.simulate_event(KeyUpEvent {
-            keystroke: Keystroke::parse(key).expect("a key"),
+            keystroke: Keystroke::parse_with_os(key, crate::theme::Platform::current().os())
+                .expect("a key"),
         });
         settle(cx);
     };
@@ -222,7 +224,8 @@ fn a_row_says_which_section_it_is_in(cx: &mut TestAppContext) {
         cx.simulate_keystrokes("enter");
         settle(cx);
         cx.simulate_event(KeyUpEvent {
-            keystroke: Keystroke::parse("enter").expect("a key"),
+            keystroke: Keystroke::parse_with_os("enter", crate::theme::Platform::current().os())
+                .expect("a key"),
         });
         settle(cx);
         rows = view.read_with(cx, |rows, _| rows.pressed.clone());

@@ -124,7 +124,11 @@ mod tests {
             cx.update(|window, cx| window.focus_next(cx));
             cx.simulate_keystrokes("enter");
             cx.simulate_event(KeyUpEvent {
-                keystroke: Keystroke::parse("enter").expect("a key"),
+                keystroke: Keystroke::parse_with_os(
+                    "enter",
+                    crate::theme::Platform::current().os(),
+                )
+                .expect("a key"),
             });
         }
         assert_eq!(presses.get(), 1);

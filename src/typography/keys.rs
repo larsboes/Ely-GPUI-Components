@@ -13,7 +13,7 @@ pub fn keystroke(source: &str, platform: Platform) -> Keystroke {
         .split('-')
         .map(|part| if part == "secondary" { secondary } else { part })
         .collect();
-    Keystroke::parse(&spelled.join("-"))
+    Keystroke::parse_with_os(&spelled.join("-"), platform.os())
         .unwrap_or_else(|error| panic!("bad keystroke {source:?}: {error}"))
 }
 
@@ -73,7 +73,8 @@ mod tests {
     use super::*;
 
     fn parse(source: &str) -> Keystroke {
-        Keystroke::parse(source).expect("valid keystroke")
+        Keystroke::parse_with_os(source, crate::theme::Platform::current().os())
+            .expect("valid keystroke")
     }
 
     #[test]
