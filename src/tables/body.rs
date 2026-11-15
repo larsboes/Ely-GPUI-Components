@@ -12,6 +12,7 @@ use crate::{
     forms::{CheckState, Editing, Input, check_mark},
     layout::on_axis,
     lists::Pick,
+    menus::{Menu, MenuItem, menu_under},
     primitives::Disclosure,
     theme::{ActiveTheme, ControlSize, TextSize},
 };
@@ -21,6 +22,8 @@ pub(super) type Detail = Rc<dyn Fn(&SharedString, &mut Window, &mut App) -> AnyE
 pub(super) type OnEdit =
     Rc<dyn Fn(&SharedString, &SharedString, &SharedString, &mut Window, &mut App)>;
 pub(super) type OnAction = Rc<dyn Fn(&SharedString, &SharedString, &mut Window, &mut App)>;
+/// Makes the row at a position current and opens it, after a press on it.
+pub(super) type Press = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
 /// Gives a cell its column's width: fixed, or a share of what is left.
 pub(super) fn sized<E: Styled>(cell: E, column: &Column, narrowest: Rems) -> E {
@@ -78,6 +81,8 @@ pub(super) struct Body {
     pub editor: Entity<Editing>,
     pub on_edit: Option<OnEdit>,
     pub on_action: Option<OnAction>,
+    pub current: Option<SharedString>,
+    pub press: Option<Press>,
     pub ranges: Rc<Vec<Option<(f64, f64)>>>,
     pub height: Rems,
     pub lead: Rems,
@@ -120,7 +125,7 @@ impl Body {
                 count,
                 folded,
             } => self.group(name, count, folded, lead, cx),
-            Line::Row { ix, position } => self.row(ix, position, cols, lead, cx),
+            Line::Row { ix, position } => self.row(ix, position, cols, lead, window, cx),
             Line::Detail { ix } => {
                 let key = self.rows[ix].key.clone();
                 let detail = self
@@ -197,15 +202,27 @@ impl Body {
             .into_any_element()
     }
 
-    fn row(&self, ix: usize, position: usize, cols: &[usize], lead: bool, cx: &App) -> AnyElement {
+    fn row(
+        &self,
+        ix: usize,
+        position: usize,
+        cols: &[usize],
+        lead: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        let cells: Vec<AnyElement> = (cols.iter())
+            .map(|col| self.cell(ix, *col, window, cx))
+            .collect();
         let key = self.rows[ix].key.clone();
+        let current = self.current.as_ref() == Some(&key);
         let on = self
             .selected
             .as_ref()
             .is_some_and(|selected| selected.contains(&key));
         let theme = cx.theme();
         let colors = &theme.colors;
-        let press = self.select.clone();
+        let (press, opens) = (self.select.clone(), self.press.clone());
         let open = self.open.contains(&key);
         let named = key.clone();
         div()
@@ -220,7 +237,10 @@ impl Body {
             .text_size(theme.text_size(TextSize::Sm))
             .text_color(colors.fg)
             .when(on, |row| row.bg(colors.active))
-            .when(!on, |row| row.hover(|style| style.bg(colors.hover)))
+            .when(current && !on, |row| row.bg(colors.selection))
+            .when(!on && !current, |row| {
+                row.hover(|style| style.bg(colors.hover))
+            })
             .when_some(self.select.clone().filter(|_| lead), |row, select| {
                 row.child(
                     div()
@@ -266,22 +286,27 @@ impl Body {
                         )),
                 )
             })
-            .when_some(press, |row, press| {
+            .when(press.is_some() || opens.is_some(), |row| {
                 row.cursor_pointer().on_click(move |event, window, cx| {
-                    let held = event.modifiers();
-                    let how = match (held.shift, held.platform) {
-                        (true, _) => Pick::Range,
-                        (false, true) => Pick::Toggle,
-                        _ => Pick::One,
-                    };
-                    press(position, how, window, cx);
+                    if let Some(press) = &press {
+                        let held = event.modifiers();
+                        let how = match (held.shift, held.platform) {
+                            (true, _) => Pick::Range,
+                            (false, true) => Pick::Toggle,
+                            _ => Pick::One,
+                        };
+                        press(position, how, window, cx);
+                    }
+                    if let Some(opens) = &opens {
+                        opens(position, window, cx);
+                    }
                 })
             })
-            .children(cols.iter().map(|col| self.cell(ix, *col, cx)))
+            .children(cells)
             .into_any_element()
     }
 
-    fn cell(&self, ix: usize, col: usize, cx: &App) -> AnyElement {
+    fn cell(&self, ix: usize, col: usize, window: &mut Window, cx: &mut App) -> AnyElement {
         let (row, column) = (&self.rows[ix], &self.columns[col]);
         let cell = &row.cells[col];
         let colors = &cx.theme().colors;
@@ -322,6 +347,9 @@ impl Body {
                     .into_any_element()
             }
             None if !column.actions.is_empty() => self.actions(row, column, cell),
+            None if !column.choices.is_empty() && self.on_edit.is_some() => {
+                self.choices(row, column, cell, window, cx)
+            }
             None => draw(
                 cell,
                 column,
@@ -329,10 +357,25 @@ impl Body {
                 cx,
             ),
         };
+        let check = match cell {
+            Cell::Check(on) if column.editable => {
+                self.on_edit.clone().map(|on_edit| (*on, on_edit))
+            }
+            _ => None,
+        };
+        let texted = column.choices.is_empty() && check.is_none();
         frame
             .when_some(tinted, |cell, bg| cell.bg(bg))
+            .when_some(check, |frame, (on, on_edit)| {
+                let (key, at) = (row.key.clone(), column.key.clone());
+                frame.cursor_pointer().on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    let next = if on { "false" } else { "true" };
+                    on_edit(&key, &at, &next.into(), window, cx);
+                })
+            })
             .when(
-                column.editable && !editing && self.on_edit.is_some(),
+                texted && column.editable && !editing && self.on_edit.is_some(),
                 |frame| {
                     let (view, editor, on_edit) = (
                         self.view.clone(),
@@ -358,6 +401,58 @@ impl Body {
             )
             .child(content)
             .into_any_element()
+    }
+
+    /// The cell drawn as a trigger that opens `column`'s choices, the current one marked; a pick goes to `on_edit`.
+    fn choices(
+        &self,
+        row: &Row,
+        column: &Column,
+        cell: &Cell,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        let (now, on_edit) = (cell.words(), self.on_edit.clone().expect("checked"));
+        let menu = column.choices.iter().fold(Menu::new(), |menu, choice| {
+            let (key, at, choice, on_edit) = (
+                row.key.clone(),
+                column.key.clone(),
+                choice.clone(),
+                on_edit.clone(),
+            );
+            menu.item(
+                MenuItem::radio(choice.clone(), choice == now)
+                    .on_click(move |window, cx| on_edit(&key, &at, &choice, window, cx)),
+            )
+        });
+        let id: ElementId = (
+            self.id.clone(),
+            format!("choices-{}-{}", row.key, column.key),
+        )
+            .into();
+        let drawn = draw(cell, column, (id.clone(), "draw").into(), cx);
+        let named = format!("table-choices {} {}", row.key, column.key);
+        menu_under(
+            id.clone(),
+            &menu,
+            |click| {
+                div()
+                    .id((id, "trigger"))
+                    .debug_selector(move || named.clone())
+                    .min_w_0()
+                    .cursor_pointer()
+                    .on_click(move |event, window, cx| {
+                        cx.stop_propagation();
+                        click(event, window, cx)
+                    })
+                    .child(drawn)
+                    .into_any_element()
+            },
+            window,
+            cx,
+        )
+        .min_w_0()
+        .into_any_element()
     }
 
     /// The buttons `cell` offers in actions column `column`; a press goes to `on_action`, not to the row.

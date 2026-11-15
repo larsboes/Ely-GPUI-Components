@@ -12,6 +12,7 @@ use gpui::{
 mod actions;
 mod clipboard;
 mod columns;
+mod current;
 mod owned;
 mod stale;
 

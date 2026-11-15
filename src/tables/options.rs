@@ -25,6 +25,10 @@ impl DataTable {
             group_by: None,
             on_edit: None,
             on_action: None,
+            current: None,
+            on_current: None,
+            on_open: None,
+            on_sort: None,
             density: Density::Standard,
             empty: None,
             scroll: None,
@@ -134,6 +138,39 @@ impl DataTable {
         handler: impl Fn(&SharedString, &SharedString, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_action = Some(Rc::new(handler));
+        self
+    }
+
+    /// The row the keys move from; up, down, j and k move it, and Enter opens it. Tab reaches the table.
+    pub fn current(mut self, key: Option<impl Into<SharedString>>) -> Self {
+        self.current = key.map(Into::into);
+        self
+    }
+
+    /// Gets the key of the row that became current, after a key or a press moved it.
+    pub fn on_current(
+        mut self,
+        handler: impl Fn(&SharedString, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_current = Some(Rc::new(handler));
+        self
+    }
+
+    /// Gets a row's key after Enter on the current row or a press on a row. The row becomes current first.
+    pub fn on_open(
+        mut self,
+        handler: impl Fn(&SharedString, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_open = Some(Rc::new(handler));
+        self
+    }
+
+    /// Gets the sort keys after a press on a header changed them.
+    pub fn on_sort(
+        mut self,
+        handler: impl Fn(&[SortKey], &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_sort = Some(Rc::new(handler));
         self
     }
 

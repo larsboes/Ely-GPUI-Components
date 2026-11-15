@@ -5,7 +5,10 @@ use gpui::{
     transparent_black,
 };
 
-use super::{Column, table::View};
+use super::{
+    Column, SortKey,
+    table::{OnSort, View},
+};
 use crate::layout::{bring_into_view, seeded::Seeded};
 use crate::{
     primitives::{DragGhost, FocusRing, Icon, IconName},
@@ -110,6 +113,7 @@ pub(crate) fn header(
     sorting: &Entity<Seeded<Vec<(SharedString, bool)>>>,
     column: &Column,
     focus: Option<FocusHandle>,
+    on_sort: Option<OnSort>,
     cx: &App,
 ) -> Stateful<Div> {
     let sort = sorting.read(cx).value.clone();
@@ -147,14 +151,21 @@ pub(crate) fn header(
             cell.cursor_pointer()
                 .hover(|style| style.text_color(colors.fg))
                 .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-                .on_click(move |event, _, cx| {
+                .on_click(move |event, window, cx| {
                     let join = event.modifiers().shift;
-                    sorter.update(cx, |sorting, cx| {
+                    let keys = sorter.update(cx, |sorting, cx| {
                         sorting.value = next_sort(&sorting.value, &key, join);
                         log::info!("data table: sort {:?}", sorting.value);
                         cx.notify();
+                        sorting.value.clone()
                     });
                     pager.update(cx, |view, _| view.page = 0);
+                    if let Some(on_sort) = &on_sort {
+                        let keys: Vec<SortKey> = (keys.into_iter())
+                            .map(|(column, rising)| SortKey { column, rising })
+                            .collect();
+                        on_sort(&keys, window, cx);
+                    }
                 })
         })
         .on_drag(

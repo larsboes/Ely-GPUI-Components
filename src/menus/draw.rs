@@ -28,8 +28,10 @@ fn row(item: &MenuItem, ix: usize, current: bool, cx: &App) -> Stateful<Div> {
         Kind::Radio(true) => (Some(IconName::Dot), fg),
         _ => (item.icon, if item.disabled { fg } else { colors.fg_muted }),
     };
+    let named = format!("menu-row {}", item.label);
     div()
         .id(("row", ix))
+        .debug_selector(move || named.clone())
         .relative()
         .flex()
         .items_center()

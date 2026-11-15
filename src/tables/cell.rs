@@ -5,6 +5,7 @@ use gpui::{
 use crate::{
     buttons::ButtonVariant,
     data_display::{Avatar, Badge, Sparkline, Tone},
+    forms::{CheckState, check_mark},
     motion::ProgressBar,
     theme::{ActiveTheme, AvatarSize, TextSize},
     typography::{Ellipsis, ExternalLink, format, tabular},
@@ -30,6 +31,8 @@ pub enum Cell {
     Figure(SharedString, f64, Tone),
     /// A title over a muted line of detail; a filter and a sort read both.
     Lines(SharedString, SharedString),
+    /// A box, ticked or not. In an editable column a press flips it, and `on_edit` gets "true" or "false"; it sorts unticked first.
+    Check(bool),
     /// The keys of its column's actions this row offers. Any other cell in an actions column offers them all.
     Actions(Vec<SharedString>),
 }
@@ -49,7 +52,9 @@ impl Cell {
             Self::Duration(seconds) => {
                 format::duration(*seconds, format::DurationStyle::Compact).into()
             }
-            Self::Empty | Self::Spark(_) | Self::Actions(_) => SharedString::default(),
+            Self::Empty | Self::Spark(_) | Self::Actions(_) | Self::Check(_) => {
+                SharedString::default()
+            }
         }
     }
 
@@ -60,6 +65,7 @@ impl Cell {
             Self::Progress(share) => Some(f64::from(*share)),
             Self::Duration(seconds) => Some(*seconds as f64),
             Self::Figure(_, value, _) => Some(*value),
+            Self::Check(on) => Some(f64::from(u8::from(*on))),
             _ => None,
         }
     }
@@ -157,6 +163,7 @@ pub struct Column {
     pub(crate) pinned: bool,
     pub(crate) muted: bool,
     pub(crate) actions: Vec<RowAction>,
+    pub(crate) choices: Vec<SharedString>,
 }
 
 impl Column {
@@ -176,6 +183,7 @@ impl Column {
             pinned: false,
             muted: false,
             actions: Vec::new(),
+            choices: Vec::new(),
         }
     }
 
@@ -247,6 +255,13 @@ impl Column {
         self.actions = actions.into_iter().collect();
         self.sortable = false;
         self.align = Align::End;
+        self
+    }
+
+    /// A press on a cell opens a menu of `choices`, the cell's words marked; the table's `on_edit` gets the pick.
+    pub fn choices(mut self, choices: impl IntoIterator<Item = impl Into<SharedString>>) -> Self {
+        self.choices = choices.into_iter().map(Into::into).collect();
+        self.editable = true;
         self
     }
 
@@ -335,6 +350,13 @@ pub(crate) fn draw(cell: &Cell, column: &Column, id: ElementId, cx: &App) -> Any
             )
             .into_any_element(),
         Cell::Actions(_) => div().into_any_element(),
+        Cell::Check(on) => check_mark(
+            if *on { CheckState::On } else { CheckState::Off },
+            false,
+            !column.editable,
+            0,
+            cx,
+        ),
     };
     if column.muted {
         div()

@@ -10,8 +10,8 @@ use gpui::{
 };
 
 use super::{
-    Cell, Column, FilterRule,
-    body::{Body, Detail, Line, OnAction, OnEdit, Select, sideways, sized},
+    Cell, Column, FilterRule, SortKey,
+    body::{Body, Detail, Line, OnAction, OnEdit, Press, Select, sideways, sized},
     header::header,
     model::{filtered, page, range},
     rules::{groups, kept, sorted_by},
@@ -60,6 +60,8 @@ pub(crate) struct View {
 }
 
 pub(super) type OnSelect = Rc<dyn Fn(&[SharedString], &mut Window, &mut App)>;
+pub(super) type OnRow = Rc<dyn Fn(&SharedString, &mut Window, &mut App)>;
+pub(super) type OnSort = Rc<dyn Fn(&[SortKey], &mut Window, &mut App)>;
 
 /// Rows under headers. A press on a header sorts, rising then falling then off; Shift adds it to the sort. A header drags to move its column and its edge drags to resize it. A query and filter rules keep rows; pages split long results, or a long table draws only the rows in view. Rows can gather into folding groups, open a detail, or edit a cell in place. With a selection, a box leads each row. Footers show figures; tinted columns show where each number sits.
 #[derive(IntoElement)]
@@ -81,6 +83,10 @@ pub struct DataTable {
     pub(super) group_by: Option<SharedString>,
     pub(super) on_edit: Option<OnEdit>,
     pub(super) on_action: Option<OnAction>,
+    pub(super) current: Option<SharedString>,
+    pub(super) on_current: Option<OnRow>,
+    pub(super) on_open: Option<OnRow>,
+    pub(super) on_sort: Option<OnSort>,
     pub(super) density: Density,
     pub(super) empty: Option<SharedString>,
     pub(super) scroll: Option<UniformListScrollHandle>,
@@ -126,6 +132,9 @@ impl RenderOnce for DataTable {
         let view: Entity<View> =
             window.use_keyed_state((id.clone(), "view"), cx, |_, _| View::default());
         let sorting = use_seeded((id.clone(), "sort"), self.sorts.clone(), window, cx);
+        let current = use_seeded((id.clone(), "current"), self.current.clone(), window, cx);
+        let keyed = self.on_open.is_some() || self.on_current.is_some();
+        let rows_focus = keyed.then(|| tab_stop((id.clone(), "rows").into(), true, window, cx));
         let editor = window.use_keyed_state((id.clone(), "editor"), cx, |_, _| Editing::default());
         let focuses: Vec<Option<FocusHandle>> = (self.columns.iter())
             .map(|column| {
@@ -253,6 +262,60 @@ impl RenderOnce for DataTable {
                 },
             ) as Select
         });
+        let scroll_handle = (self.scroll.clone()).unwrap_or_else(|| view.read(cx).scroll.clone());
+        let line_of = {
+            let lines: Vec<Option<SharedString>> = (lines.iter())
+                .map(|line| match line {
+                    Line::Row { ix, .. } => Some(rows[*ix].key.clone()),
+                    _ => None,
+                })
+                .collect();
+            Rc::new(move |key: &SharedString| lines.iter().position(|at| at.as_ref() == Some(key)))
+        };
+        // Makes `key` current, reports it, and keeps a long table's row in view.
+        let make_current = {
+            let (current, on_current, scroll, line_of, virtualized) = (
+                current.clone(),
+                self.on_current.clone(),
+                scroll_handle.clone(),
+                line_of.clone(),
+                self.virtualized,
+            );
+            Rc::new(
+                move |key: &SharedString, window: &mut Window, cx: &mut App| {
+                    current.update(cx, |current, cx| {
+                        current.value = Some(key.clone());
+                        cx.notify();
+                    });
+                    if virtualized && let Some(line) = line_of(key) {
+                        scroll.scroll_to_item(line, gpui::ScrollStrategy::Nearest);
+                    }
+                    if let Some(on_current) = &on_current {
+                        on_current(key, window, cx);
+                    }
+                },
+            )
+        };
+        let press: Option<Press> = keyed.then(|| {
+            let (ordered, make_current, on_open, focus) = (
+                ordered.clone(),
+                make_current.clone(),
+                self.on_open.clone(),
+                rows_focus.clone(),
+            );
+            Rc::new(move |position: usize, window: &mut Window, cx: &mut App| {
+                let Some(key) = ordered.get(position) else {
+                    return;
+                };
+                if let Some(focus) = &focus {
+                    window.focus(focus, cx);
+                }
+                make_current(key, window, cx);
+                if let Some(on_open) = &on_open {
+                    on_open(key, window, cx);
+                }
+            }) as Press
+        });
         let theme = cx.theme();
         let height = theme.table_row(self.density);
         let widths: Rc<Vec<Option<Pixels>>> = Rc::new(
@@ -276,6 +339,8 @@ impl RenderOnce for DataTable {
             editor,
             on_edit: self.on_edit,
             on_action: self.on_action,
+            current: current.read(cx).value.clone(),
+            press,
             ranges: Rc::new(
                 columns
                     .iter()
@@ -349,6 +414,7 @@ impl RenderOnce for DataTable {
                         &sorting,
                         &columns[*col],
                         focuses[*col].clone(),
+                        self.on_sort.clone(),
                         cx,
                     );
                     match widths[*col] {
@@ -463,6 +529,41 @@ impl RenderOnce for DataTable {
                     ),
                 )
         });
-        self.base.flex().flex_col().child(table).children(pager)
+        let base = self.base.id((id.clone(), "table")).flex().flex_col();
+        let base = match rows_focus {
+            Some(focus) => {
+                let (ordered, current, on_open) = (ordered.clone(), current.clone(), self.on_open);
+                let watch = focus.clone();
+                base.track_focus(&focus)
+                    .on_key_down(move |event, window, cx| {
+                        if !watch.is_focused(window) || event.keystroke.modifiers.modified() {
+                            return;
+                        }
+                        let now = current.read(cx).value.clone();
+                        let at = now
+                            .as_ref()
+                            .and_then(|key| ordered.iter().position(|k| k == key));
+                        let last = ordered.len().saturating_sub(1);
+                        let next = match event.keystroke.key.as_str() {
+                            "down" | "j" => at.map_or(0, |at| (at + 1).min(last)),
+                            "up" | "k" => at.map_or(0, |at| at.saturating_sub(1)),
+                            "enter" => {
+                                if let (Some(key), Some(on_open)) = (now, &on_open) {
+                                    cx.stop_propagation();
+                                    on_open(&key, window, cx);
+                                }
+                                return;
+                            }
+                            _ => return,
+                        };
+                        cx.stop_propagation();
+                        if let Some(key) = ordered.get(next) {
+                            make_current(key, window, cx);
+                        }
+                    })
+            }
+            None => base,
+        };
+        base.child(table).children(pager)
     }
 }
