@@ -3,9 +3,10 @@ use gpui::{
 };
 
 use crate::{
+    buttons::ButtonVariant,
     data_display::{Avatar, Badge, Sparkline, Tone},
     motion::ProgressBar,
-    theme::{ActiveTheme, AvatarSize},
+    theme::{ActiveTheme, AvatarSize, TextSize},
     typography::{Ellipsis, ExternalLink, format, tabular},
 };
 
@@ -27,6 +28,10 @@ pub enum Cell {
     Duration(u64),
     /// A number the app formats itself, such as money in its own locale: the text it shows, the value it sorts and adds by, and its tone. Neutral reads muted.
     Figure(SharedString, f64, Tone),
+    /// A title over a muted line of detail; a filter and a sort read both.
+    Lines(SharedString, SharedString),
+    /// The keys of its column's actions this row offers. Any other cell in an actions column offers them all.
+    Actions(Vec<SharedString>),
 }
 
 impl Cell {
@@ -38,12 +43,13 @@ impl Cell {
             | Self::Person(text)
             | Self::Link(text, _)
             | Self::Figure(text, _, _) => text.clone(),
+            Self::Lines(title, meta) => format!("{title} {meta}").into(),
             Self::Number(value) => value.to_string().into(),
             Self::Progress(share) => share.to_string().into(),
             Self::Duration(seconds) => {
                 format::duration(*seconds, format::DurationStyle::Compact).into()
             }
-            Self::Empty | Self::Spark(_) => SharedString::default(),
+            Self::Empty | Self::Spark(_) | Self::Actions(_) => SharedString::default(),
         }
     }
 
@@ -106,6 +112,34 @@ impl Aggregate {
     }
 }
 
+/// A button an actions column draws on its rows; the table's `on_action` gets its key.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RowAction {
+    pub(crate) key: SharedString,
+    pub(crate) label: SharedString,
+    pub(crate) variant: ButtonVariant,
+}
+
+impl RowAction {
+    pub fn new(key: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
+        Self {
+            key: key.into(),
+            label: label.into(),
+            variant: ButtonVariant::Ghost,
+        }
+    }
+
+    /// Draws as the row's main action.
+    pub fn primary(mut self) -> Self {
+        self.variant = ButtonVariant::Primary;
+        self
+    }
+
+    pub fn key(&self) -> &SharedString {
+        &self.key
+    }
+}
+
 /// A column: its key and title, its width, and how its cells read.
 #[derive(Clone, Debug)]
 pub struct Column {
@@ -122,6 +156,7 @@ pub struct Column {
     pub(crate) editable: bool,
     pub(crate) pinned: bool,
     pub(crate) muted: bool,
+    pub(crate) actions: Vec<RowAction>,
 }
 
 impl Column {
@@ -140,6 +175,7 @@ impl Column {
             editable: false,
             pinned: false,
             muted: false,
+            actions: Vec::new(),
         }
     }
 
@@ -206,6 +242,22 @@ impl Column {
         self
     }
 
+    /// Draws `actions` as buttons on each row, at the end; its header does not sort. A row's `Cell::Actions` names the ones it offers.
+    pub fn actions(mut self, actions: impl IntoIterator<Item = RowAction>) -> Self {
+        self.actions = actions.into_iter().collect();
+        self.sortable = false;
+        self.align = Align::End;
+        self
+    }
+
+    /// The actions `cell` offers in this column, in the column's order.
+    pub(crate) fn offered<'a>(&'a self, cell: &'a Cell) -> impl Iterator<Item = &'a RowAction> {
+        self.actions.iter().filter(move |action| match cell {
+            Cell::Actions(keys) => keys.contains(&action.key),
+            _ => true,
+        })
+    }
+
     pub fn key(&self) -> &SharedString {
         &self.key
     }
@@ -270,6 +322,19 @@ pub(crate) fn draw(cell: &Cell, column: &Column, id: ElementId, cx: &App) -> Any
             .text_color(figure_color(*tone, colors))
             .child(text.clone())
             .into_any_element(),
+        Cell::Lines(title, meta) => div()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .child(Ellipsis::new(title.clone()))
+            .child(
+                div()
+                    .text_size(cx.theme().text_size(TextSize::Xs))
+                    .text_color(colors.fg_muted)
+                    .child(Ellipsis::new(meta.clone())),
+            )
+            .into_any_element(),
+        Cell::Actions(_) => div().into_any_element(),
     };
     if column.muted {
         div()
@@ -311,6 +376,42 @@ mod tests {
         .collect();
         let order = sorted_by(&rows, vec![0, 1, 2], &[(0, true)]);
         assert_eq!(order, [2, 0, 1], "by value, not by its text");
+    }
+
+    #[test]
+    fn lines_filter_and_sort_by_title_then_meta() {
+        let cell = Cell::Lines("Chair".into(), "Oak · 2019".into());
+        assert_eq!(cell.words(), "Chair Oak · 2019");
+        assert_eq!(cell.number(), None);
+        let rows: Vec<Row> = [
+            ("a", "Table", "Pine"),
+            ("b", "Chair", "Oak"),
+            ("c", "Chair", "Ash"),
+        ]
+        .into_iter()
+        .map(|(key, title, meta)| Row::new(key, [Cell::Lines(title.into(), meta.into())]))
+        .collect();
+        assert_eq!(sorted_by(&rows, vec![0, 1, 2], &[(0, true)]), [2, 1, 0]);
+    }
+
+    #[test]
+    fn a_row_offers_the_actions_its_cell_names_or_all() {
+        let column = Column::new("do", "").actions([
+            RowAction::new("confirm", "Confirm").primary(),
+            RowAction::new("reject", "Reject"),
+        ]);
+        assert!(!column.sortable, "actions do not sort");
+        assert_eq!(column.align, Align::End);
+        let keys = |cell: &Cell| -> Vec<String> {
+            column
+                .offered(cell)
+                .map(|action| action.key.to_string())
+                .collect()
+        };
+        assert_eq!(keys(&Cell::Empty), ["confirm", "reject"]);
+        assert_eq!(keys(&Cell::Actions(vec!["reject".into()])), ["reject"]);
+        assert!(keys(&Cell::Actions(Vec::new())).is_empty());
+        assert_eq!(Cell::Actions(vec!["reject".into()]).words(), "");
     }
 
     #[test]

@@ -24,6 +24,7 @@ impl DataTable {
             detail: None,
             group_by: None,
             on_edit: None,
+            on_action: None,
             density: Density::Standard,
             empty: None,
             scroll: None,
@@ -124,6 +125,15 @@ impl DataTable {
         handler: impl Fn(&SharedString, &SharedString, &SharedString, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_edit = Some(Rc::new(handler));
+        self
+    }
+
+    /// Gets a row's key and an action's key, after a press on a button in an actions column.
+    pub fn on_action(
+        mut self,
+        handler: impl Fn(&SharedString, &SharedString, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_action = Some(Rc::new(handler));
         self
     }
 

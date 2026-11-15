@@ -6,8 +6,9 @@ use gpui::{
     Styled, Window, div, prelude::*, transparent_black,
 };
 
-use super::{Align, Column, Row, cell::draw, model::tint, table::View};
+use super::{Align, Cell, Column, Row, cell::draw, model::tint, table::View};
 use crate::{
+    buttons::Button,
     forms::{CheckState, Editing, Input, check_mark},
     layout::on_axis,
     lists::Pick,
@@ -19,6 +20,7 @@ pub(super) type Select = Rc<dyn Fn(usize, Pick, &mut Window, &mut App)>;
 pub(super) type Detail = Rc<dyn Fn(&SharedString, &mut Window, &mut App) -> AnyElement>;
 pub(super) type OnEdit =
     Rc<dyn Fn(&SharedString, &SharedString, &SharedString, &mut Window, &mut App)>;
+pub(super) type OnAction = Rc<dyn Fn(&SharedString, &SharedString, &mut Window, &mut App)>;
 
 /// Gives a cell its column's width: fixed, or a share of what is left.
 pub(super) fn sized<E: Styled>(cell: E, column: &Column, narrowest: Rems) -> E {
@@ -75,6 +77,7 @@ pub(super) struct Body {
     pub editing: Option<(SharedString, SharedString)>,
     pub editor: Entity<Editing>,
     pub on_edit: Option<OnEdit>,
+    pub on_action: Option<OnAction>,
     pub ranges: Rc<Vec<Option<(f64, f64)>>>,
     pub height: Rems,
     pub lead: Rems,
@@ -318,6 +321,7 @@ impl Body {
                     .child(Input::new(&field).size(ControlSize::Sm))
                     .into_any_element()
             }
+            None if !column.actions.is_empty() => self.actions(row, column, cell),
             None => draw(
                 cell,
                 column,
@@ -353,6 +357,37 @@ impl Body {
                 },
             )
             .child(content)
+            .into_any_element()
+    }
+
+    /// The buttons `cell` offers in actions column `column`; a press goes to `on_action`, not to the row.
+    fn actions(&self, row: &Row, column: &Column, cell: &Cell) -> AnyElement {
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .children(column.offered(cell).map(|action| {
+                let (key, at, on_action) =
+                    (row.key.clone(), action.key.clone(), self.on_action.clone());
+                let named = format!("table-action {} {}", row.key, action.key);
+                let button = Button::new(
+                    (
+                        self.id.clone(),
+                        format!("action-{}-{}", row.key, action.key),
+                    ),
+                    action.label.clone(),
+                )
+                .variant(action.variant)
+                .size(ControlSize::Sm)
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    match &on_action {
+                        Some(on_action) => on_action(&key, &at, window, cx),
+                        None => log::warn!("data table: action {at} on {key} has no on_action"),
+                    }
+                });
+                div().debug_selector(move || named.clone()).child(button)
+            }))
             .into_any_element()
     }
 }

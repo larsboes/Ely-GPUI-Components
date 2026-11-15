@@ -19,7 +19,7 @@ mod toolbar;
 mod tree_table;
 
 pub use builders::{FilterBuilder, SortBuilder};
-pub use cell::{Aggregate, Align, Cell, Column};
+pub use cell::{Aggregate, Align, Cell, Column, RowAction};
 pub use pivot::PivotTable;
 pub use rules::{FilterRule, SortKey, Test, to_csv};
 pub use sheets::{DataGrid, Spreadsheet};

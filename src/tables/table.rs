@@ -11,7 +11,7 @@ use gpui::{
 
 use super::{
     Cell, Column, FilterRule,
-    body::{Body, Detail, Line, OnEdit, Select, sideways, sized},
+    body::{Body, Detail, Line, OnAction, OnEdit, Select, sideways, sized},
     header::header,
     model::{filtered, page, range},
     rules::{groups, kept, sorted_by},
@@ -80,6 +80,7 @@ pub struct DataTable {
     pub(super) detail: Option<Detail>,
     pub(super) group_by: Option<SharedString>,
     pub(super) on_edit: Option<OnEdit>,
+    pub(super) on_action: Option<OnAction>,
     pub(super) density: Density,
     pub(super) empty: Option<SharedString>,
     pub(super) scroll: Option<UniformListScrollHandle>,
@@ -274,6 +275,7 @@ impl RenderOnce for DataTable {
             editing: view.read(cx).editing.clone(),
             editor,
             on_edit: self.on_edit,
+            on_action: self.on_action,
             ranges: Rc::new(
                 columns
                     .iter()
