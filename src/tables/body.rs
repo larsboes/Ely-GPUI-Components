@@ -230,6 +230,7 @@ impl Body {
             .debug_selector(move || format!("table-row {named}"))
             .flex()
             .items_center()
+            .w_full()
             .min_w_full()
             .h(self.height)
             .border_b_1()

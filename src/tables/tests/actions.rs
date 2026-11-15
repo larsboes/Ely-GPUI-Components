@@ -80,3 +80,57 @@ fn a_press_on_an_action_reports_its_row_and_key_and_does_not_select(cx: &mut Tes
         "an action press does not select its row"
     );
 }
+
+struct Subtitles(bool);
+
+impl Render for Subtitles {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let table = DataTable::new(
+            "subtitles",
+            [
+                Column::new("name", "Name"),
+                Column::new("actions", "")
+                    .width(gpui::rems(7.))
+                    .actions([RowAction::new("edit", "Edit")]),
+            ],
+        )
+        .rows(vec![
+            Row::new(
+                "short",
+                [Cell::Lines("Short".into(), "A note".into()), Cell::Empty],
+            ),
+            Row::new(
+                "long",
+                [
+                    Cell::Lines(
+                        "Long".into(),
+                        "A long item subtitle that must stay in the name column. "
+                            .repeat(8)
+                            .into(),
+                    ),
+                    Cell::Empty,
+                ],
+            ),
+        ])
+        .on_action(|_, _, _, _| {})
+        .w(px(500.))
+        .h(px(200.));
+        if self.0 { table.virtualized() } else { table }
+    }
+}
+
+#[gpui::test]
+fn long_subtitles_keep_row_actions_in_their_column(cx: &mut TestAppContext) {
+    cx.update(Theme::init);
+    for virtualized in [false, true] {
+        let (_, cx) = cx.add_window_view(|_, _| Subtitles(virtualized));
+        settle(cx);
+        let short = cx.debug_bounds("table-action short edit").unwrap();
+        let long = cx.debug_bounds("table-action long edit").unwrap();
+        assert_eq!(short.left(), long.left(), "virtualized={virtualized}");
+        assert!(
+            long.right() <= px(500.),
+            "the action stays inside the table"
+        );
+    }
+}
