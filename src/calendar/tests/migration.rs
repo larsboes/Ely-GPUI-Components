@@ -141,6 +141,7 @@ fn waiting_editor(host: &Planning, owner: Entity<Planning>) -> gpui::AnyElement 
 fn pending_editor_rejects_submit_and_keeps_edited_text_through_owner_updates(
     cx: &mut TestAppContext,
 ) {
+    cx.update(crate::init_for_tests);
     let (host, cx) = planning(waiting_editor, cx);
     cx.simulate_input("Review");
     cx.simulate_keystrokes("enter");
@@ -206,4 +207,27 @@ fn midnight(_: &Planning, _: Entity<Planning>) -> gpui::AnyElement {
 fn midnight_end_keeps_its_resize_handle_on_the_last_visible_day(cx: &mut TestAppContext) {
     let (_, cx) = planning(midnight, cx);
     assert!(cx.debug_bounds("end night 2026-09-22").is_some());
+}
+
+#[test]
+fn moving_the_start_clamps_only_an_earlier_end_date() {
+    use crate::calendar::{When, editor::clamped};
+    let when = When::Timed {
+        start: at(22, 9),
+        end: at(22, 10),
+    };
+    assert_eq!(
+        clamped(when, at(23, 9), &TimeZone::UTC),
+        Some(When::Timed {
+            start: at(23, 9),
+            end: at(23, 10)
+        })
+    );
+    assert_eq!(
+        clamped(when, at(22, 8), &TimeZone::UTC),
+        Some(When::Timed {
+            start: at(22, 8),
+            end: at(22, 10)
+        })
+    );
 }

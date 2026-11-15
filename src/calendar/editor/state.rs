@@ -85,6 +85,23 @@ pub(in crate::calendar) fn moved(when: When, start: Timestamp) -> Option<When> {
     }
 }
 
+/// Moves the start while keeping the end clock and clamping its date.
+pub(in crate::calendar) fn clamped(when: When, start: Timestamp, zone: &TimeZone) -> Option<When> {
+    let When::Timed { end, .. } = when else {
+        return None;
+    };
+    let civil_end = end.to_zoned(zone.clone()).datetime();
+    let day = start.to_zoned(zone.clone()).date();
+    let end = if civil_end.date() < day {
+        zone.to_ambiguous_timestamp(day.to_datetime(civil_end.time()))
+            .unambiguous()
+            .ok()?
+    } else {
+        end
+    };
+    Some(When::Timed { start, end })
+}
+
 /// The editor's working copy: what the owner gave, the parts changed so far, and the fields that hold its words.
 pub(super) struct Editing {
     pub(super) seed: EventDraft,

@@ -1,7 +1,7 @@
 mod state;
 use state::Editing;
 pub use state::EventDraft;
-pub(super) use state::{moved, toggled};
+pub(super) use state::{clamped, moved, toggled};
 
 use std::rc::Rc;
 
@@ -247,26 +247,12 @@ impl RenderOnce for EventEditor {
                                 };
                                 let at_zone = at_zone.clone();
                                 edit(Rc::new(move |draft| {
-                                    if clamp_end {
-                                        if let When::Timed { end, .. } = draft.when {
-                                            let end_civil =
-                                                end.to_zoned(at_zone.clone()).datetime();
-                                            let new_day = start.to_zoned(at_zone.clone()).date();
-                                            let end = if end_civil.date() < new_day {
-                                                at_zone
-                                                    .to_ambiguous_timestamp(
-                                                        new_day.to_datetime(end_civil.time()),
-                                                    )
-                                                    .unambiguous()
-                                                    .ok()
-                                            } else {
-                                                Some(end)
-                                            };
-                                            if let Some(end) = end {
-                                                draft.when = When::Timed { start, end };
-                                            }
-                                        }
-                                    } else if let Some(when) = moved(draft.when, start) {
+                                    let when = if clamp_end {
+                                        clamped(draft.when, start, &at_zone)
+                                    } else {
+                                        moved(draft.when, start)
+                                    };
+                                    if let Some(when) = when {
                                         draft.when = when;
                                     }
                                 }))(cx)
