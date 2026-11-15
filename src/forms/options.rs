@@ -305,6 +305,7 @@ impl Popup<'_> {
                 checked,
                 cx,
             )
+            .debug_selector(move || format!("option-row {ix}"))
             .when(!choice.disabled, |row| {
                 row.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     window.prevent_default();

@@ -90,7 +90,7 @@ pub(crate) use number::parse as parse_number;
 pub use number::{NumberInput, ScrubInput};
 pub use options::Choice;
 pub(crate) use options::{
-    OnFlag, OnNumber, OnValue, OnValues, Pick, Run, float, float_height, marked_row, reveal,
+    OnFlag, OnNumber, OnValue, OnValues, Pick, Popup, Run, float, float_height, marked_row, reveal,
     revealer, step, surface,
 };
 pub use pairs::{FieldArray, KeyValueInput, ListInput};

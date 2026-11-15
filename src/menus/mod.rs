@@ -1,4 +1,5 @@
 mod bar;
+mod caret;
 mod draw;
 mod hosts;
 mod menu;
@@ -8,6 +9,7 @@ mod pie;
 mod tests;
 
 pub use bar::MenuBar;
+pub use caret::CaretMenu;
 pub(crate) use hosts::menu_under;
 pub use hosts::{ContextMenu, DropdownMenu, OverflowMenu, SearchableMenu, SplitButton};
 pub use model::{Menu, MenuItem};
