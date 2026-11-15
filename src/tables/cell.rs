@@ -25,15 +25,19 @@ pub enum Cell {
     Link(SharedString, SharedString),
     /// A length of time in seconds, read in its two largest units; it sorts by length.
     Duration(u64),
+    /// A number the app formats itself, such as money in its own locale: the text it shows, the value it sorts and adds by, and its tone. Neutral reads muted.
+    Figure(SharedString, f64, Tone),
 }
 
 impl Cell {
     /// The words a filter looks through and a sort compares.
     pub(crate) fn words(&self) -> SharedString {
         match self {
-            Self::Text(text) | Self::Tag(text, _) | Self::Person(text) | Self::Link(text, _) => {
-                text.clone()
-            }
+            Self::Text(text)
+            | Self::Tag(text, _)
+            | Self::Person(text)
+            | Self::Link(text, _)
+            | Self::Figure(text, _, _) => text.clone(),
             Self::Number(value) => value.to_string().into(),
             Self::Progress(share) => share.to_string().into(),
             Self::Duration(seconds) => {
@@ -49,6 +53,7 @@ impl Cell {
             Self::Number(value) => Some(*value),
             Self::Progress(share) => Some(f64::from(*share)),
             Self::Duration(seconds) => Some(*seconds as f64),
+            Self::Figure(_, value, _) => Some(*value),
             _ => None,
         }
     }
@@ -116,6 +121,7 @@ pub struct Column {
     pub(crate) scale: bool,
     pub(crate) editable: bool,
     pub(crate) pinned: bool,
+    pub(crate) muted: bool,
 }
 
 impl Column {
@@ -133,6 +139,7 @@ impl Column {
             scale: false,
             editable: false,
             pinned: false,
+            muted: false,
         }
     }
 
@@ -193,6 +200,12 @@ impl Column {
         self
     }
 
+    /// Its cells read in the muted text color, as a secondary column does.
+    pub fn muted(mut self) -> Self {
+        self.muted = true;
+        self
+    }
+
     pub fn key(&self) -> &SharedString {
         &self.key
     }
@@ -215,7 +228,7 @@ impl Column {
 /// A cell drawn as its kind asks.
 pub(crate) fn draw(cell: &Cell, column: &Column, id: ElementId, cx: &App) -> AnyElement {
     let colors = &cx.theme().colors;
-    match cell {
+    let drawn = match cell {
         Cell::Empty => div().into_any_element(),
         Cell::Text(text) => Ellipsis::new(text.clone()).into_any_element(),
         Cell::Number(value) => tabular(div())
@@ -253,5 +266,56 @@ pub(crate) fn draw(cell: &Cell, column: &Column, id: ElementId, cx: &App) -> Any
         Cell::Link(label, url) => {
             ExternalLink::new(id, label.clone(), url.clone()).into_any_element()
         }
+        Cell::Figure(text, _, tone) => tabular(div())
+            .text_color(figure_color(*tone, colors))
+            .child(text.clone())
+            .into_any_element(),
+    };
+    if column.muted {
+        div()
+            .min_w_0()
+            .text_color(colors.fg_muted)
+            .child(drawn)
+            .into_any_element()
+    } else {
+        drawn
+    }
+}
+
+/// The text color a figure of `tone` takes.
+fn figure_color(tone: Tone, colors: &crate::theme::Palette) -> gpui::Hsla {
+    match tone {
+        Tone::Neutral => colors.fg_muted,
+        Tone::Accent => colors.accent,
+        other => other.colors(colors).1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tables::{Row, rules::sorted_by};
+
+    #[test]
+    fn a_figure_shows_its_text_and_sorts_by_its_value() {
+        let figure = Cell::Figure("12,34 €".into(), 12.34, Tone::Danger);
+        assert_eq!(figure.words(), "12,34 €");
+        assert_eq!(figure.number(), Some(12.34));
+        let rows: Vec<Row> = [
+            ("a", "9,00 €", 9.0),
+            ("b", "10,00 €", 10.0),
+            ("c", "-1,00 €", -1.0),
+        ]
+        .into_iter()
+        .map(|(key, text, value)| Row::new(key, [Cell::Figure(text.into(), value, Tone::Neutral)]))
+        .collect();
+        let order = sorted_by(&rows, vec![0, 1, 2], &[(0, true)]);
+        assert_eq!(order, [2, 0, 1], "by value, not by its text");
+    }
+
+    #[test]
+    fn a_column_is_plain_until_muted() {
+        assert!(!Column::new("a", "A").muted);
+        assert!(Column::new("a", "A").muted().muted);
     }
 }

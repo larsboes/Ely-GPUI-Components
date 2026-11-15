@@ -25,7 +25,14 @@ impl DataTable {
             group_by: None,
             on_edit: None,
             density: Density::Standard,
+            empty: None,
         }
+    }
+
+    /// What the table says when no row shows, in place of "Nothing matches.".
+    pub fn empty(mut self, text: impl Into<SharedString>) -> Self {
+        self.empty = Some(text.into());
+        self
     }
 
     /// The rows, owned or shared; a shared list is not copied.

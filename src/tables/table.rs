@@ -81,6 +81,7 @@ pub struct DataTable {
     pub(super) group_by: Option<SharedString>,
     pub(super) on_edit: Option<OnEdit>,
     pub(super) density: Density,
+    pub(super) empty: Option<SharedString>,
 }
 
 impl Styled for DataTable {
@@ -383,7 +384,7 @@ impl RenderOnce for DataTable {
                                 .py_6()
                                 .text_size(theme.text_size(TextSize::Sm))
                                 .text_color(theme.colors.fg_subtle)
-                                .child("Nothing matches."),
+                                .child(self.empty.unwrap_or_else(|| "Nothing matches.".into())),
                         ),
                 )
                 .into_any_element()
