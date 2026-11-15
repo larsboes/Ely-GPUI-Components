@@ -16,12 +16,13 @@ use gpui::{
 use web_time::Instant;
 
 use super::{
-    colors::Ink,
+    appearance::Appearance,
     frame::{Frame, frame},
     input,
     links::Target,
     paint,
     pty::{self, Launch, Listener, Session},
+    remote::Remote,
     search::Search,
 };
 use crate::{
@@ -45,12 +46,17 @@ pub enum TerminalEvent {
     Open(Target),
     /// Cmd-F: the host shows its find widget.
     Find,
+    /// Modified wheel input asks the host to change its persisted font size.
+    Zoom(i32),
 }
 
 /// A terminal: a program on a pseudo-terminal, or replayed output, drawn cell by cell. Type to it, drag to select, Cmd-press a link.
 pub struct Terminal {
     pub(crate) term: Arc<FairMutex<Term<Listener>>>,
     pub(crate) pty: Option<Notifier>,
+    pub(super) remote: Option<Remote>,
+    pub(super) transport_error: Option<SharedString>,
+    pub(super) appearance: Option<Appearance>,
     pub(crate) focus: FocusHandle,
     title: SharedString,
     exited: Option<ExitStatus>,
@@ -99,7 +105,7 @@ impl Terminal {
         Self::new(session, (columns, lines), "Output".into(), cx)
     }
 
-    fn new(
+    pub(super) fn new(
         session: Session,
         size: (usize, usize),
         title: SharedString,
@@ -127,6 +133,9 @@ impl Terminal {
         Self {
             term,
             pty,
+            remote: None,
+            transport_error: None,
+            appearance: None,
             focus: cx.focus_handle().tab_stop(true),
             title,
             exited: None,
@@ -158,25 +167,40 @@ impl Terminal {
     }
 
     /// Sends bytes to the program, as typing would.
-    pub fn write(&mut self, bytes: impl Into<Cow<'static, [u8]>>) {
-        match &self.pty {
-            Some(pty) => pty.notify(bytes),
-            None => log::debug!("terminal: input to a replayed grid"),
+    pub fn write(&mut self, bytes: impl Into<Cow<'static, [u8]>>, cx: &mut Context<Self>) {
+        let bytes = bytes.into();
+        if let Some(remote) = &self.remote {
+            if let Some(transport) = &remote.transport
+                && let Err(error) = transport.input(&bytes)
+            {
+                log::error!("terminal: remote input failed: {error:#}");
+                self.transport_error = Some(format!("Remote input failed: {error:#}").into());
+                cx.notify();
+            }
+        } else if let Some(pty) = &self.pty {
+            pty.notify(bytes);
+        } else {
+            log::debug!("terminal: input to a replayed grid");
         }
     }
 
     /// Clears the screen and the scrollback; a shell redraws its prompt.
     pub fn clear(&mut self, cx: &mut Context<Self>) {
         self.search = Search::default();
+        let live = self.pty.is_some()
+            || self
+                .remote
+                .as_ref()
+                .is_some_and(|remote| remote.transport.is_some());
         {
             let mut term = self.term.lock();
             term.clear_screen(ClearMode::Saved);
-            if self.pty.is_none() {
+            if !live {
                 term.clear_screen(ClearMode::All);
             }
         }
-        if self.pty.is_some() {
-            self.write(&b"\x0c"[..]);
+        if live {
+            self.write(&b"\x0c"[..], cx);
         }
         log::info!("terminal: cleared");
         cx.notify();
@@ -202,6 +226,15 @@ impl Terminal {
         if let Some(pty) = &mut self.pty {
             pty.on_resize(pty::window_size(&TermSize::new(size.0, size.1), cell));
         }
+        if let Some(transport) = self
+            .remote
+            .as_ref()
+            .and_then(|remote| remote.transport.as_ref())
+            && let Err(error) = transport.resize(size.0, size.1)
+        {
+            log::error!("terminal: remote resize failed: {error:#}");
+            self.transport_error = Some(format!("Remote resize failed: {error:#}").into());
+        }
         log::debug!("terminal: {columns} by {lines}");
     }
 
@@ -221,6 +254,9 @@ impl Terminal {
                     self.bell = Some(Instant::now());
                     cx.emit(TerminalEvent::Bell);
                 }
+                Event::ClipboardStore(..) | Event::ClipboardLoad(..) if self.remote.is_some() => {
+                    log::debug!("terminal: remote clipboard request ignored");
+                }
                 Event::ClipboardStore(_, text) => {
                     cx.write_to_clipboard(ClipboardItem::new_string(text))
                 }
@@ -229,12 +265,12 @@ impl Terminal {
                         .read_from_clipboard()
                         .and_then(|item| item.text())
                         .unwrap_or_default();
-                    self.write(reply(&text).into_bytes());
+                    self.write(reply(&text).into_bytes(), cx);
                 }
                 Event::ColorRequest(index, reply) => {
-                    let ink = Ink::new(&cx.theme().colors);
+                    let ink = self.ink(cx);
                     let rgb = ink.query(index, self.term.lock().colors());
-                    self.write(reply(rgb).into_bytes());
+                    self.write(reply(rgb).into_bytes(), cx);
                 }
                 Event::TextAreaSizeRequest(reply) => {
                     let cell = (
@@ -242,9 +278,9 @@ impl Terminal {
                         f32::from(self.cell.height).round() as u16,
                     );
                     let size = TermSize::new(self.size.0, self.size.1);
-                    self.write(reply(pty::window_size(&size, cell)).into_bytes());
+                    self.write(reply(pty::window_size(&size, cell)).into_bytes(), cx);
                 }
-                Event::PtyWrite(text) => self.write(text.into_bytes()),
+                Event::PtyWrite(text) => self.write(text.into_bytes(), cx),
                 Event::ChildExit(status) => {
                     log::info!("terminal: the program ended, {status}");
                     self.exited = Some(status);
@@ -278,10 +314,17 @@ impl Drop for Terminal {
 impl Render for Terminal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let ink = Ink::new(&theme.colors);
-        let text = theme.text_size(TextSize::Sm);
-        let mono = font(theme.mono_family.clone());
-        let pixels = text.to_pixels(window.rem_size());
+        let ink = self.ink(cx);
+        let mono = self
+            .appearance
+            .as_ref()
+            .map(|style| style.font.clone())
+            .unwrap_or_else(|| font(theme.mono_family.clone()));
+        let pixels = self
+            .appearance
+            .as_ref()
+            .map(|style| style.font_size)
+            .unwrap_or_else(|| theme.text_size(TextSize::Sm).to_pixels(window.rem_size()));
         let resolved = window.text_system().resolve_font(&mono);
         let advance = match window.text_system().advance(resolved, pixels, 'm') {
             Ok(advance) => advance.width,
@@ -290,7 +333,13 @@ impl Render for Terminal {
                 pixels * 0.6
             }
         };
-        self.cell = size(advance, (pixels * LEADING).round());
+        self.cell = size(
+            advance,
+            self.appearance
+                .as_ref()
+                .map(|style| style.line_height)
+                .unwrap_or_else(|| (pixels * LEADING).round()),
+        );
         let (found, current) = self.search.visible();
         self.shown = Rc::new(frame(&self.term.lock(), &ink, found, current));
         let flash = self.bell.and_then(|rang| {
@@ -307,10 +356,16 @@ impl Render for Terminal {
             size: pixels,
             cell: self.cell,
             focused: self.focus.is_focused(window),
-            caret: colors.focus,
+            caret: self
+                .appearance
+                .as_ref()
+                .map_or(colors.focus, |style| style.cursor),
             caret_width: theme.caret_width().to_pixels(window.rem_size()),
             rule: theme.underline_thickness(),
-            selection: colors.selection,
+            selection: self
+                .appearance
+                .as_ref()
+                .map_or(colors.selection, |style| style.selection),
             found: colors.warning.opacity(0.25),
             current: colors.warning.opacity(0.55),
             link: colors.link,
@@ -320,18 +375,26 @@ impl Render for Terminal {
             .key_context(input::CONTEXT)
             .track_focus(&self.focus)
             .size_full()
+            .flex()
+            .flex_col()
             .p_2()
             .bg(ink.bg)
             .when_some(flash, |root, left| {
                 root.bg(ink.bg.blend(colors.warning.opacity(0.12 * left)))
             })
             .when(self.hovered.is_some(), |root| root.cursor_pointer())
-            .child(paint::grid(
+            .children(self.transport_error.clone().map(|error| {
+                div()
+                    .debug_selector(|| "terminal-transport-error".into())
+                    .text_color(colors.danger)
+                    .child(error)
+            }))
+            .child(div().flex_1().min_h_0().child(paint::grid(
                 cx.entity(),
                 self.shown.clone(),
                 self.hovered.clone(),
                 look,
-            ));
+            )));
         input::listen(root, cx)
     }
 }

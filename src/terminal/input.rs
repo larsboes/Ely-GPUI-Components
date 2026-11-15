@@ -79,6 +79,10 @@ pub(crate) fn listen<E: InteractiveElement>(root: E, cx: &mut Context<Terminal>)
             MouseButton::Left,
             cx.listener(|terminal, _, _, _| terminal.selecting = false),
         )
+        .on_mouse_up_out(
+            MouseButton::Left,
+            cx.listener(|terminal, _, _, _| terminal.selecting = false),
+        )
         .on_scroll(cx.listener(Terminal::wheel))
         .on_modifiers_changed(
             cx.listener(|terminal, event: &ModifiersChangedEvent, _, cx| {
@@ -97,7 +101,7 @@ impl Terminal {
             term.scroll_display(Scroll::Bottom);
             term.selection = None;
         }
-        self.write(bytes);
+        self.write(bytes, cx);
         cx.notify();
     }
 
@@ -214,7 +218,15 @@ impl Terminal {
 
     fn wheel(&mut self, event: &ScrollEvent, _: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
-        self.rest += event.delta.pixel_delta(self.cell.height).y;
+        let delta = event.delta.pixel_delta(self.cell.height).y;
+        if event.modifiers.platform || event.modifiers.control {
+            let step = f32::from(delta).signum() as i32;
+            if delta != Pixels::ZERO {
+                cx.emit(TerminalEvent::Zoom(step));
+            }
+            return;
+        }
+        self.rest += delta;
         let lines = (self.rest / self.cell.height).trunc() as i32;
         if lines == 0 {
             return;
@@ -228,7 +240,7 @@ impl Terminal {
                 (false, true) => b"\x1bOB",
                 (false, false) => b"\x1b[B",
             };
-            self.write(arrow.repeat(lines.unsigned_abs() as usize));
+            self.write(arrow.repeat(lines.unsigned_abs() as usize), cx);
         } else {
             self.scroll(Scroll::Delta(lines), cx);
         }

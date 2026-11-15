@@ -145,7 +145,7 @@ pub fn shell(window: &mut Window, cx: &mut App) -> impl IntoElement + use<> {
         })
     })
     .on_clear(move |_, cx| clearer.update(cx, |terminal, cx| terminal.clear(cx)))
-    .on_stop(move |_, cx| stopper.update(cx, |terminal, _| terminal.write(&b"\x03"[..])));
+    .on_stop(move |_, cx| stopper.update(cx, |terminal, cx| terminal.write(&b"\x03"[..], cx)));
     let (step, flip) = (build.clone(), options.clone());
     let find = FindWidget::new("terminal-find-widget", &query, current, total)
         .options(*options.read(cx))
