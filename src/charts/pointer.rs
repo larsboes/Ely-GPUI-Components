@@ -9,7 +9,7 @@ use gpui::{
 use super::{
     geometry::{Dot, Geometry, Ink, Rect},
     paint::{Pen, at, finish, paint, place, ring},
-    plot::{Pick, Plot, State},
+    plot::{Pick, Plot, Select, State},
     scale::Band,
 };
 
@@ -207,7 +207,10 @@ pub(crate) fn answer(
     (pick, horizontal, zoomable): (Pick, bool, bool),
     (rect, span, reach): (Rect, (usize, usize), f32),
     geometry: Rc<Geometry>,
+    select: Option<Select>,
 ) -> Stateful<Div> {
+    let selected = state.clone();
+    let selected_geometry = geometry.clone();
     let (moved, left, pressed, released) =
         (state.clone(), state.clone(), state.clone(), state.clone());
     let end_brush = move |_: &MouseUpEvent, _: &mut Window, cx: &mut App| {
@@ -224,12 +227,36 @@ pub(crate) fn answer(
                 && to > from
             {
                 state.span = Some((from, to));
+                state.brushed = true;
                 log::info!("chart: zoomed to {from}..={to}");
             }
             cx.notify();
         })
     };
-    root.on_mouse_move(move |event: &MouseMoveEvent, _, cx| {
+    root.when_some(select, |root, select| {
+        root.cursor_pointer().on_click(move |event, window, cx| {
+            if selected.read(cx).brushed
+                || selected
+                    .read(cx)
+                    .brush
+                    .is_some_and(|(a, b)| (b - a).abs() > reach)
+            {
+                return;
+            }
+            if let Some(ix) = pick_at(
+                pick,
+                local(event.position(), selected.read(cx).bounds),
+                rect,
+                horizontal,
+                span,
+                &selected_geometry.dots,
+                reach,
+            ) {
+                select(ix, window, cx);
+            }
+        })
+    })
+    .on_mouse_move(move |event: &MouseMoveEvent, _, cx| {
         let place = local(event.position, moved.read(cx).bounds);
         moved.update(cx, |state, cx| {
             if event.pressed_button == Some(MouseButton::Left)
@@ -261,6 +288,7 @@ pub(crate) fn answer(
             .on_mouse_down(MouseButton::Left, move |event: &MouseDownEvent, _, cx| {
                 let place = local(event.position, pressed.read(cx).bounds);
                 pressed.update(cx, |state, cx| {
+                    state.brushed = event.click_count == 2;
                     if event.click_count == 2 {
                         state.span = None;
                         log::info!("chart: zoom reset");

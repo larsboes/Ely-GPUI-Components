@@ -1,3 +1,4 @@
+use gpui::prelude::FluentBuilder;
 use std::rc::Rc;
 
 use gpui::{
@@ -12,7 +13,7 @@ use super::{
     layout::squarify,
     paint::{measure, place, tint},
     parts::ChartTooltip,
-    plot::Format,
+    plot::{Format, Select},
     scale::compact,
     series::drawable,
 };
@@ -92,6 +93,7 @@ pub struct Treemap {
     id: ElementId,
     tiles: Vec<(SharedString, f64)>,
     format: Format,
+    select: Option<Select>,
 }
 
 impl Treemap {
@@ -101,6 +103,7 @@ impl Treemap {
             id: id.into(),
             tiles: Vec::new(),
             format: Rc::new(compact),
+            select: None,
         }
     }
 
@@ -110,6 +113,12 @@ impl Treemap {
             "a tile needs a value of zero or more, within charts::LIMIT"
         );
         self.tiles.push((name.into(), value));
+        self
+    }
+
+    /// Reports the original tile index, independent of layout order, when clicked.
+    pub fn on_select(mut self, select: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
+        self.select = Some(Rc::new(select));
         self
     }
 
@@ -215,12 +224,23 @@ impl RenderOnce for Treemap {
             .relative()
             .h(sizes.height);
         root.style().refine(self.base.style());
+        let selected = tiles.clone();
+        let selected_rects = hit.clone();
         tracked(
             root,
             (self.id.clone(), "treemap").into(),
             &tiles,
             move |at| hit.iter().position(|rect| rect.contains(at)),
         )
+        .when_some(self.select, |root, select| {
+            root.cursor_pointer().on_click(move |event, window, cx| {
+                let offset = event.position() - selected.read(cx).bounds.origin;
+                let at = (f32::from(offset.x), f32::from(offset.y));
+                if let Some(ix) = selected_rects.iter().position(|rect| rect.contains(at)) {
+                    select(ix, window, cx);
+                }
+            })
+        })
         .child(
             canvas(
                 |_, _, _| {},

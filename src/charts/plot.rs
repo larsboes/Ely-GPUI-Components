@@ -22,6 +22,7 @@ use crate::{
 };
 
 pub(crate) type Format = Rc<dyn Fn(f64) -> String>;
+pub(crate) type Select = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 /// Lays out a plot's marks inside its frame.
 pub(crate) type Layout = Rc<dyn Fn(&Scene) -> Geometry>;
 /// A picked index's tooltip: its title, then each row's dot if any, name and value.
@@ -64,6 +65,7 @@ pub(crate) struct Plot {
     pub notes: Vec<(usize, SharedString)>,
     pub zoom: bool,
     pub format: Format,
+    pub select: Option<Select>,
 }
 
 impl Plot {
@@ -82,6 +84,7 @@ impl Plot {
             notes: Vec::new(),
             zoom: false,
             format: Rc::new(compact),
+            select: None,
         }
     }
 }
@@ -95,6 +98,7 @@ pub(crate) struct State {
     pub hidden: HashSet<SharedString>,
     pub span: Option<(usize, usize)>,
     pub brush: Option<(f32, f32)>,
+    pub brushed: bool,
     glide: Glide,
 }
 
@@ -230,6 +234,7 @@ pub(crate) fn plot(plot: Plot, base: Div, window: &mut Window, cx: &mut App) -> 
         ways,
         (rect, span, pixels(sizes.inset)),
         geometry.clone(),
+        plot.select,
     )
     .child(drawing(
         geometry,

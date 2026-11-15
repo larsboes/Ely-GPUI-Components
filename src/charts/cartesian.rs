@@ -8,7 +8,7 @@ use gpui::{
 use super::{
     export::{Sheet, svg},
     geometry::{Categories, Ink, Mark, categories, scatter},
-    plot::{Format, Layout, Pick, Plot, Scene, Tips, plot},
+    plot::{Format, Layout, Pick, Plot, Scene, Select, Tips, plot},
     scale::compact,
     series::drawable,
     series::{Points, Series, csv, points_csv},
@@ -30,6 +30,7 @@ pub(crate) struct Chart {
     notes: Vec<(usize, SharedString)>,
     zoom: bool,
     format: Format,
+    select: Option<Select>,
 }
 
 impl Chart {
@@ -47,6 +48,7 @@ impl Chart {
             notes: Vec::new(),
             zoom: false,
             format: Rc::new(compact),
+            select: None,
         }
     }
 
@@ -66,6 +68,11 @@ impl Chart {
 
     fn layout(&self) -> Layout {
         let (labels, names) = (self.labels.clone(), self.names());
+        let rules = self
+            .rules
+            .iter()
+            .map(|(value, _)| *value)
+            .collect::<Vec<_>>();
         let (mark, stacked, horizontal, gap) = (self.mark, self.stacked, self.horizontal, self.gap);
         Rc::new(move |scene: &Scene| {
             let chart = Categories {
@@ -78,6 +85,7 @@ impl Chart {
                 gap,
                 hidden: scene.hidden,
                 span: scene.span,
+                rules: &rules,
             };
             categories(&chart, scene.frame)
         })
@@ -109,6 +117,7 @@ impl Chart {
             Pick::Point
         };
         let mut plot = Plot::new(self.id.clone(), pick, self.layout(), self.tips());
+        plot.select = self.select.clone();
         (plot.names, plot.values) = (self.names(), self.values());
         (plot.labels, plot.horizontal, plot.smooth) = (self.labels, self.horizontal, self.smooth);
         (plot.rules, plot.notes, plot.zoom, plot.format) =
@@ -267,6 +276,12 @@ impl AreaChart {
 }
 
 impl BarChart {
+    /// Reports the original category index when a bar is clicked.
+    pub fn on_select(mut self, select: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
+        self.chart.select = Some(Rc::new(select));
+        self
+    }
+
     pub fn stacked(mut self) -> Self {
         self.chart.stacked = true;
         self

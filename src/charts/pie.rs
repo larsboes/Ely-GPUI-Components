@@ -1,8 +1,10 @@
 use std::{
     f32::consts::{FRAC_PI_2, PI, TAU},
+    rc::Rc,
     time::Duration,
 };
 
+use gpui::prelude::FluentBuilder;
 use gpui::{
     App, Bounds, Div, ElementId, Entity, HoverListenerMode, Hsla, InteractiveElement, IntoElement,
     MouseMoveEvent, ParentElement, PathBuilder, Pixels, Point, Refineable, RenderOnce,
@@ -15,6 +17,7 @@ use super::{
     glide::Glide,
     paint::{finish, measure, tint},
     parts::{ChartLegend, ChartTooltip},
+    plot::Select,
     scale::compact,
     series::drawable,
 };
@@ -178,6 +181,7 @@ pub struct PieChart {
     id: ElementId,
     slices: Vec<(SharedString, f64)>,
     center: Option<(SharedString, SharedString)>,
+    select: Option<Select>,
 }
 
 impl PieChart {
@@ -187,6 +191,7 @@ impl PieChart {
             id: id.into(),
             slices: Vec::new(),
             center: None,
+            select: None,
         }
     }
 
@@ -196,6 +201,12 @@ impl PieChart {
             "a slice needs a value of zero or more, within charts::LIMIT"
         );
         self.slices.push((name.into(), value));
+        self
+    }
+
+    /// Reports the original slice index when a slice is clicked.
+    pub fn on_select(mut self, select: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
+        self.select = Some(Rc::new(select));
         self
     }
 
@@ -304,6 +315,8 @@ impl RenderOnce for PieChart {
             |legend, (ix, (name, _))| legend.entry(tint(&colors, ix), name.clone(), false),
         );
         let (moved, left, measured, hit) = (ring.clone(), ring.clone(), ring.clone(), arcs.clone());
+        let selected = ring.clone();
+        let selected_arcs = arcs.clone();
         let mut frame = div().debug_selector(|| "chart-root".into()).h(sizes.height);
         frame.style().refine(self.base.style());
         frame.flex().flex_col().gap_2().child(legend).child(
@@ -312,6 +325,21 @@ impl RenderOnce for PieChart {
                 .relative()
                 .flex_1()
                 .min_h_0()
+                .when_some(self.select, |root, select| {
+                    root.cursor_pointer().on_click(move |event, window, cx| {
+                        let center = selected.read(cx).bounds.center();
+                        let at = event.position();
+                        if let Some(ix) = arc_at(
+                            &selected_arcs,
+                            (f32::from(center.x), f32::from(center.y)),
+                            (f32::from(at.x), f32::from(at.y)),
+                            inner,
+                            outer + lift,
+                        ) {
+                            select(ix, window, cx);
+                        }
+                    })
+                })
                 .on_mouse_move(move |event: &MouseMoveEvent, _, cx| {
                     let center = moved.read(cx).bounds.center();
                     let at = (f32::from(event.position.x), f32::from(event.position.y));

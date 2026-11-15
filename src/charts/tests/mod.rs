@@ -1,4 +1,5 @@
 mod limits;
+mod selection;
 
 use std::{
     cell::{Cell, RefCell},

@@ -100,6 +100,7 @@ pub(crate) struct Categories<'a> {
     pub gap: f32,
     pub hidden: &'a HashSet<SharedString>,
     pub span: (usize, usize),
+    pub rules: &'a [f64],
 }
 
 /// Lays out categories and their series inside `frame`: bands along one axis, values along the other.
@@ -127,6 +128,8 @@ pub(crate) fn categories(chart: &Categories, frame: Rect) -> Geometry {
         ),
         None => extent(runs.iter().flat_map(|values| values.iter().copied())),
     };
+    let low = chart.rules.iter().copied().fold(low, f64::min);
+    let high = chart.rules.iter().copied().fold(high, f64::max);
     let ((low, high), ticks) = nice(low, high, 5);
     let count = last - first + 1;
     let (value_range, band_range) = if chart.horizontal {
@@ -307,6 +310,7 @@ mod tests {
             gap: 0.28,
             hidden,
             span: (0, 2),
+            rules: &[],
         }
     }
 
@@ -341,6 +345,26 @@ mod tests {
             "grouped bars stand apart"
         );
         assert_eq!(group.ticks.first().map(|tick| tick.1), Some(0.0));
+    }
+
+    #[test]
+    fn reference_rules_expand_the_value_axis_beyond_the_samples() {
+        let labels = ["Jan", "Feb", "Mar"].map(SharedString::from);
+        let values = sales();
+        let hidden = HashSet::new();
+        let mut chart = chart(&labels, &values, &hidden, Mark::Line, false);
+        chart.rules = &[-50., 100.];
+        let geometry = categories(
+            &chart,
+            Rect {
+                x: 0.,
+                y: 0.,
+                w: 300.,
+                h: 100.,
+            },
+        );
+        assert!(geometry.ticks.first().unwrap().1 <= -50.);
+        assert!(geometry.ticks.last().unwrap().1 >= 100.);
     }
 
     #[test]
@@ -404,6 +428,7 @@ mod tests {
             gap: 0.28,
             hidden: &hidden,
             span: (0, 0),
+            rules: &[],
         };
         assert_eq!(
             categories(
