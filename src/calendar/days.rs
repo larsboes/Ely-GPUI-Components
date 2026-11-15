@@ -171,16 +171,17 @@ impl<const DAYS: usize> CalendarDays<DAYS> {
 }
 
 /// The days' names at their columns, today's number lit, beside the zones' names over the hours.
-fn names(
-    id: &ElementId,
+fn names<const DAYS: usize>(
+    view: &CalendarDays<DAYS>,
     days: &[Date],
     today: Date,
-    selected: Date,
-    on_select: Option<OnDay>,
     zones: &[String],
     window: &Window,
     cx: &App,
 ) -> AnyElement {
+    let id = &view.id;
+    let selected = view.day;
+    let on_select = view.on_select.clone();
     let theme = cx.theme();
     let colors = &theme.colors;
     let gutter = theme.calendar().gutter.to_pixels(window.rem_size());
@@ -326,6 +327,7 @@ impl<const DAYS: usize> RenderOnce for CalendarDays<DAYS> {
                 format::datetime(now, &overlay.zone, "%Z").expect("a fixed pattern"),
             );
         }
+        let names = names(&self, &days, today, &zones, window, cx);
         let whole = AllDayRow::new(
             (self.id.clone(), "all-day"),
             days.clone(),
@@ -362,16 +364,7 @@ impl<const DAYS: usize> RenderOnce for CalendarDays<DAYS> {
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .child(names(
-                        &self.id,
-                        &days,
-                        today,
-                        self.day,
-                        self.on_select,
-                        &zones,
-                        window,
-                        cx,
-                    ))
+                    .child(names)
                     .child(whole)
                     .child(div().flex_1().min_h_0().child(grid)),
             )

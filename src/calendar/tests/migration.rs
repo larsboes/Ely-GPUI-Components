@@ -123,3 +123,65 @@ fn clicking_a_slot_suggests_one_hour_without_starting_a_drag(cx: &mut TestAppCon
         [format!("slot {} {}", at(23, 13), at(23, 14))]
     );
 }
+
+fn waiting_editor(host: &Planning, owner: Entity<Planning>) -> gpui::AnyElement {
+    use crate::calendar::{EventDraft, EventEditor};
+    let draft = EventDraft::of(&Event::timed("edit", "", at(22, 9), at(22, 10), 0));
+    EventEditor::new("waiting", draft)
+        .zone(TimeZone::UTC)
+        .autofocus(true)
+        .scheduling(false)
+        .pending(host.month.day() == 1)
+        .error(Some("Save failed".into()))
+        .on_save(move |draft, _, cx| note(&owner, format!("saved {}", draft.title), cx))
+        .into_any_element()
+}
+
+#[gpui::test]
+fn pending_editor_rejects_submit_and_keeps_edited_text_through_owner_updates(
+    cx: &mut TestAppContext,
+) {
+    let (host, cx) = planning(waiting_editor, cx);
+    cx.simulate_input("Review");
+    cx.simulate_keystrokes("enter");
+    settle(cx);
+    assert!(heard(&host, cx).is_empty());
+    host.update(cx, |host, cx| {
+        host.month = date(2026, 9, 2);
+        cx.notify();
+    });
+    settle(cx);
+    cx.simulate_keystrokes("enter");
+    settle(cx);
+    assert_eq!(heard(&host, cx), ["saved Review"]);
+}
+
+#[test]
+fn all_day_switching_preserves_the_last_day_and_excludes_midnight() {
+    use crate::calendar::{When, editor::toggled};
+    let when = When::AllDay {
+        first: date(2026, 9, 22),
+        last: date(2026, 9, 24),
+    };
+    let timed = toggled(when, &TimeZone::UTC).unwrap();
+    assert_eq!(
+        timed,
+        When::Timed {
+            start: at(22, 9),
+            end: at(24, 10)
+        }
+    );
+    assert_eq!(
+        toggled(
+            When::Timed {
+                start: at(22, 9),
+                end: at(24, 0)
+            },
+            &TimeZone::UTC
+        ),
+        Some(When::AllDay {
+            first: date(2026, 9, 22),
+            last: date(2026, 9, 23)
+        })
+    );
+}
