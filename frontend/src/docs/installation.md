@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Rust 1.95 or later, the version Ely's `Cargo.toml` names.
+- Rust 1.98 or later, the version Ely's `Cargo.toml` names.
 - macOS, where Ely is tested. Windows and Linux builds are not tested yet.
 - No full Xcode: GPUI compiles its Metal shaders at run time.
 

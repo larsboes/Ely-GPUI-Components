@@ -4,7 +4,7 @@ Ely GPUI Component. A component library for GPUI, in light and dark.
 
 ## Stack
 
-- Rust 1.95, edition 2024. One crate: `ely-gpui-component`.
+- Rust 1.98, edition 2024. One crate: `ely-gpui-component`.
 - GPUI Kit selects Ely's engine. Default to its `gpui-pre` snapshot, or enable `gpui-fast` in both Ely and the host. `Cargo.toml` owns the Kit version and `Cargo.lock` records the resolved engine versions.
 - Assets, embedded with `rust-embed`: Lucide 1.48.0 icons (ISC), Inter 4.1 (regular, medium, semibold, italic), JetBrains Mono 2.304 and IBM Plex Sans Regular (OFL). Plex sits unmodified, its name reserved, where gpui's svg renderer loads it: gpui_web answers `.SystemUIFont` with it, and svg text falls back to it on the web.
 - Catalog data: `emojis` (Unicode emoji), `isolang` (ISO 639, native names), `isocountry` (ISO 3166), `iso_currency` (ISO 4217, also minor units for money).
