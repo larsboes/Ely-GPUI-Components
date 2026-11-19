@@ -1,18 +1,20 @@
 # GPUI Kit
 
-Ely runs beside Longbridge's [GPUI Kit](https://gpui-kit.com) in one app and one window. Both build on one GPUI: Ely pins `gpui-pre =0.3.8`, the snapshot Kit 0.7.1 pins.
+This fork uses Longbridge's [GPUI Kit](https://gpui-kit.com) 0.10.0 as its GPUI dependency. Ely and the app share Kit's selected engine: `gpui-pre =0.3.12` by default, or GPUI Fast when Ely's `gpui-fast` feature is enabled.
 
 ## Add the dependencies
 
 ```toml
 [dependencies]
-gpui-kit = "0.7"
-ely-gpui-component = { git = "https://github.com/ZacharyZhang-NY/Ely-GPUI-Components" }
+gpui-kit = "=0.10.0"
+ely-gpui-component = { git = "https://github.com/larsboes/Ely-GPUI-Components", branch = "sjel" }
 ```
 
-Kit brings GPUI and puts it at its root, so the app writes `use gpui_kit::*` and lists no `gpui` line of its own. Ely follows Kit's default GPUI.
+Kit re-exports GPUI at its root, so the app writes `use gpui_kit::*` and needs no separate `gpui` dependency. Kit's default features provide its components and assets; an app using Ely alone can disable them, as the fork's README shows.
 
-In an app, Cargo picks the newest Kit that shares Ely's GPUI. A Kit release on another `gpui-pre` waits until Ely's pin follows. Ely's CI asks for Kit's newest release on every push and fails on such a release, naming `gpui-pre`.
+For GPUI Fast, enable `features = ["gpui-fast"]` on the Ely dependency. That forwards engine selection to the shared Kit dependency. Keep the app's Kit version aligned with Ely's exact pin rather than selecting a second Kit version.
+
+The compatibility check in `scripts/check.sh` also probes the newest published Kit release. It does not update Ely's dependency pin; a resolution or API failure needs a reviewed upgrade.
 
 ## Start both
 
@@ -43,4 +45,4 @@ In debug builds Kit's `init` installs Kit's inspector. Call `ely_gpui_component:
 
 ## A whole app
 
-[`compat/kit/examples/start.rs`](https://github.com/ZacharyZhang-NY/Ely-GPUI-Components/blob/main/compat/kit/examples/start.rs) puts Ely's heading and button beside Kit's field and dialog, and one button turns both themes. From a clone, run it with `cargo run --manifest-path compat/kit/Cargo.toml --example start`. The crate's tests hold each claim on this page.
+[`compat/kit/examples/start.rs`](https://github.com/larsboes/Ely-GPUI-Components/blob/sjel/compat/kit/examples/start.rs) puts Ely's heading and button beside Kit's field and dialog, and one button turns both themes. From a clone, run it with `cargo run --manifest-path compat/kit/Cargo.toml --example start`. The crate's tests cover shared assets, focus, dialogs and themes.

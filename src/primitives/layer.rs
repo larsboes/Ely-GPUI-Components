@@ -45,6 +45,7 @@ impl Raised {
     }
 }
 
+#[cfg(not(feature = "gpui-fast"))]
 impl IntoElement for Raised {
     type Element = Self;
 
@@ -124,6 +125,7 @@ struct Layer {
     child: AnyElement,
 }
 
+#[cfg(not(feature = "gpui-fast"))]
 impl IntoElement for Layer {
     type Element = Self;
 

@@ -1,7 +1,7 @@
 use gpui::{
-    Context, FocusHandle, InteractiveElement, IntoElement, KeyBinding, Modifiers, MouseButton,
-    OwnedMenu, OwnedMenuItem, ParentElement, Render, Styled, TestAppContext, VisualTestContext,
-    Window, actions, div, point, px,
+    Context, FocusHandle, InteractiveElement, IntoElement, Modifiers, MouseButton, OwnedMenu,
+    OwnedMenuItem, ParentElement, Render, Styled, TestAppContext, VisualTestContext, Window,
+    actions, div, point, px,
 };
 
 use super::{press, settle};

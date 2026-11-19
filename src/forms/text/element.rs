@@ -2,9 +2,9 @@ use std::rc::Rc;
 
 use gpui::{
     App, AvailableSpace, Bounds, ContentMask, DispatchPhase, Element, ElementId,
-    ElementInputHandler, Entity, FontStyle, GlobalElementId, Hsla, InspectorElementId, IntoElement,
-    LayoutId, MouseMoveEvent, Pixels, Point, SharedString, StrikethroughStyle, Style, TextAlign,
-    TextRun, UnderlineStyle, Window, WrappedLine, fill, point, relative, size,
+    ElementInputHandler, Entity, FontStyle, GlobalElementId, Hsla, InspectorElementId, LayoutId,
+    MouseMoveEvent, Pixels, Point, SharedString, StrikethroughStyle, Style, TextAlign, TextRun,
+    UnderlineStyle, Window, WrappedLine, fill, point, relative, size,
 };
 
 use super::{Highlight, Layout, TextInput};
@@ -23,7 +23,8 @@ impl TextElement {
     }
 }
 
-impl IntoElement for TextElement {
+#[cfg(not(feature = "gpui-fast"))]
+impl gpui::IntoElement for TextElement {
     type Element = Self;
 
     fn into_element(self) -> Self::Element {

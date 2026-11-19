@@ -2,7 +2,7 @@ use std::{panic::Location, rc::Rc};
 
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, Entity, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Position, ScrollHandle, Style, Window, size,
+    InspectorElementId, LayoutId, Pixels, Position, ScrollHandle, Style, Window, size,
 };
 
 use crate::forms::{Choice, Pick, Popup, Run, reveal};
@@ -15,8 +15,7 @@ struct State {
     revealed: Option<usize>,
 }
 
-/// An externally controlled choice menu that leaves focus and keyboard handling in its host.
-/// Place it after the input; the anchor callback reads the current frame's caret in prepaint.
+/// A host-controlled, focus-neutral menu; place it after the input to read this frame's caret anchor in prepaint.
 pub struct CaretMenu {
     id: ElementId,
     rows: Vec<Choice>,
@@ -52,7 +51,8 @@ impl CaretMenu {
     }
 }
 
-impl IntoElement for CaretMenu {
+#[cfg(not(feature = "gpui-fast"))]
+impl gpui::IntoElement for CaretMenu {
     type Element = Self;
     fn into_element(self) -> Self {
         self

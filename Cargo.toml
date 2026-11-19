@@ -21,7 +21,7 @@ anyhow = "1"
 barcoders = { version = "2", default-features = false, features = ["std"] }
 emojis = "0.9"
 futures = "0.3"
-gpui = { package = "gpui-kit", version = "=0.9.1", default-features = false }
+gpui = { package = "gpui-kit", version = "=0.10.0", default-features = false }
 gpui-pre-leaks = { package = "gpui-pre", version = "=0.3.12", default-features = false, optional = true }
 image = { version = "0.25", default-features = false }
 iso_currency = { version = "0.7", features = ["iterator"] }

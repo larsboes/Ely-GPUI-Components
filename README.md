@@ -7,7 +7,7 @@ Every component runs live at https://elygpui.com, compiled to WebAssembly.
 
 Status: early. `TASKS.md` tracks every component, chapter by chapter. To help, see `CONTRIBUTING.md`.
 
-**This fork** (branch `sjel`) builds on [GPUI Kit](https://gpui-kit.com) 0.9.1 instead of a
+**This fork** (branch `sjel`) builds on [GPUI Kit](https://gpui-kit.com) 0.10.0 instead of a
 direct `gpui-pre` pin, so it follows whichever engine the application selects: `gpui-pre`
 by default, GPUI Fast with the `gpui-fast` feature. It is maintained for
 [Sjel](https://github.com/larsboes/Sjel); upstream is
@@ -18,7 +18,7 @@ by default, GPUI Fast with the `gpui-fast` feature. It is maintained for
 ```toml
 [dependencies]
 ely-gpui-component = { git = "https://github.com/larsboes/Ely-GPUI-Components", branch = "sjel" }
-gpui-kit = { version = "=0.9.1", default-features = false }
+gpui-kit = { version = "=0.10.0", default-features = false }
 ```
 
 ```rust
@@ -37,7 +37,7 @@ fn main() {
 
 ## With GPUI Kit
 
-Ely runs beside Longbridge's [GPUI Kit](https://gpui-kit.com) in one window, on the GPUI snapshot Kit 0.7.1 pins. Pass `Assets::before(gpui_kit::assets::Assets)` as the one asset source, call both `init`s, open the window with `gpui_kit::open_window`, and wrap the view in Ely's root `FocusScope`. The [guide](https://elygpui.com/docs/gpui-kit) covers themes, focus and the inspector; `compat/kit` holds a whole app and the tests behind each claim.
+This fork depends on GPUI Kit 0.10.0 and reuses its selected engine. To use Kit's components too, keep the app on that Kit version, enable its default features, pass `Assets::before(gpui_kit::assets::Assets)` as the one asset source, and call both `init`s. Open the window with `gpui_kit::open_window` and wrap the view in Ely's root `FocusScope`. The [guide](frontend/src/docs/gpui-kit.md) covers engine selection, themes, focus and the inspector; `compat/kit` holds a whole app and integration tests.
 
 ## Gallery
 
@@ -65,7 +65,7 @@ pnpm deploy     # Cloudflare, through wrangler
 
 ## Build notes
 
-- gpui compiles its Metal shaders at runtime here (`runtime_shaders`, on by default), so a full Xcode install is not required. gpui_platform needs `font-kit`, or macOS draws no text.
+- Kit enables `runtime_shaders` and `font-kit` on its native platform dependency: Metal shaders compile at runtime without a full Xcode install, and macOS text has its font backend. Ely has no separate `runtime_shaders` feature.
 - CI tests the crate and builds the gallery on macOS, Windows and Linux, arm64 and x86_64. The capture tool needs macOS.
 
 ## License

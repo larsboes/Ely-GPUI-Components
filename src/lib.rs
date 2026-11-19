@@ -73,10 +73,7 @@ pub fn init_for_tests(cx: &mut App) {
     setup(cx);
 }
 
-/// A key binding for runtime keystrokes or the `secondary-` alias, resolved for the host OS.
-///
-/// GPUI's `KeyBinding::new` takes only static strings and refuses `secondary-` (gpui-pre 0.3.12,
-/// `keymap/binding.rs`); `KeyBinding::load` resolves both.
+/// Resolves runtime keystrokes and `secondary-` for the host OS through `KeyBinding::load`, unlike `new`.
 pub(crate) fn bind<A: gpui::Action>(
     cx: &gpui::App,
     keystrokes: &str,
@@ -109,11 +106,10 @@ fn setup(cx: &mut App) {
     documents::bind_keys(cx);
 }
 
-#[cfg(all(test, feature = "test-support"))]
+#[cfg(all(test, feature = "test-support", not(feature = "gpui-fast")))]
 mod tests {
     use gpui::{AppContext, TestAppContext};
 
-    #[cfg(not(feature = "gpui-fast"))]
     #[gpui::test]
     #[should_panic(expected = "leaked handles")]
     fn a_leaked_entity_fails_its_test(cx: &mut TestAppContext) {

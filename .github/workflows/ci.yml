@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, sjel]
   pull_request:
 
 jobs:
@@ -30,8 +30,21 @@ jobs:
         with:
           toolchain: "1.95"
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --lib --features test-support --quiet
-      - run: cargo build --example gallery
+      - run: cargo test --locked --lib --features test-support --quiet
+      - run: cargo build --locked --example gallery
+
+  fast:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95"
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --locked --all-targets --features test-support,gpui-fast -- -D warnings
+      - run: cargo test --locked --lib --features test-support,gpui-fast --quiet
+      - run: cargo test --manifest-path compat/kit/Cargo.toml --features gpui-fast --quiet
 
   site:
     runs-on: ubuntu-latest
