@@ -5,6 +5,9 @@ on:
     branches: [main, sjel]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   crate:
     runs-on: macos-latest
