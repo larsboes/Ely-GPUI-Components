@@ -12,6 +12,7 @@ mod pivot;
 mod rules;
 mod sheets;
 mod simple;
+mod state;
 mod table;
 #[cfg(all(test, feature = "test-support"))]
 mod tests;

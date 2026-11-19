@@ -1,10 +1,43 @@
-use gpui::{App, Div, FontWeight, ParentElement, Styled, div, prelude::*, transparent_black};
+use gpui::{
+    App, Div, ElementId, Entity, FontWeight, ParentElement, Styled, div, prelude::*,
+    transparent_black,
+};
 
 use super::{Aggregate, Cell, body::Body, body::sized, model::figure};
 use crate::{
+    navigation::Pagination,
     theme::{ActiveTheme, TextSize},
-    typography::format,
+    typography::{Caption, format},
 };
+
+pub(super) fn pager(
+    id: &ElementId,
+    view: &Entity<super::state::View>,
+    page_at: usize,
+    size: usize,
+    total: usize,
+    pages: usize,
+) -> Div {
+    let (first, last) = (page_at * size + 1, ((page_at + 1) * size).min(total));
+    let (view, id) = (view.clone(), id.clone());
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .pt_3()
+        .child(Caption::new(format!("{first}–{last} of {total}")))
+        .child(
+            Pagination::new((id.clone(), "pages"), page_at + 1, pages).on_change(
+                move |page, _, cx| {
+                    view.update(cx, |view, cx| {
+                        view.page = page - 1;
+                        log::info!("data table {id:?}: page {page}");
+                        cx.notify();
+                    })
+                },
+            ),
+        )
+}
 
 impl Body {
     /// The footer's figures over the rows `order` keeps, in columns `cols`; none when no column asks for one.

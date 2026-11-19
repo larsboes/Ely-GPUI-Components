@@ -7,7 +7,7 @@ use gpui::{
 
 use super::{
     Column, SortKey,
-    table::{OnSort, View},
+    state::{OnSort, View},
 };
 use crate::layout::{bring_into_view, seeded::Seeded};
 use crate::{

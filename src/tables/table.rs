@@ -1,17 +1,13 @@
-use std::{
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Div, ElementId, Entity, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, Pixels, RenderOnce, ScrollHandle, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Styled, UniformListScrollHandle, Window, div, prelude::*, uniform_list,
+    AnyElement, App, Div, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
+    Pixels, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::*,
+    uniform_list,
 };
 
 use super::{
-    Cell, Column, FilterRule, SortKey,
-    body::{Body, Detail, Line, OnAction, OnEdit, Press, Select, sideways, sized},
+    body::{Body, Line, Press, Select, sideways, sized},
     header::header,
     model::{filtered, page, range},
     rules::{groups, kept, sorted_by},
@@ -20,84 +16,12 @@ use crate::{
     forms::{CheckState, Editing, check_mark},
     layout::{on_axis, seeded::use_seeded},
     lists::{Pick, picked},
-    navigation::Pagination,
     primitives::tab_stop,
-    theme::{ActiveTheme, ControlSize, Density, TextSize},
-    typography::Caption,
+    theme::{ActiveTheme, ControlSize, TextSize},
 };
 
-/// One row: its key, which a selection names it by, and a cell for each column.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Row {
-    pub(crate) key: SharedString,
-    pub(crate) cells: Vec<Cell>,
-}
-
-impl Row {
-    pub fn new(key: impl Into<SharedString>, cells: impl IntoIterator<Item = Cell>) -> Self {
-        Self {
-            key: key.into(),
-            cells: cells.into_iter().collect(),
-        }
-    }
-}
-
-/// A table's own state: the page, a Shift range's start, the scrolls down and sideways, the header last scrolled into view, column widths, edges and order, opened rows, folded groups, and the cell being edited.
-#[derive(Default)]
-pub(crate) struct View {
-    pub page: usize,
-    pub anchor: usize,
-    pub scroll: UniformListScrollHandle,
-    pub sideways: ScrollHandle,
-    pub revealed: Option<SharedString>,
-    pub widths: HashMap<SharedString, Pixels>,
-    pub edges: HashMap<SharedString, Pixels>,
-    pub narrowest: Pixels,
-    pub order: Vec<SharedString>,
-    pub open: HashSet<SharedString>,
-    pub folded: HashSet<SharedString>,
-    pub editing: Option<(SharedString, SharedString)>,
-}
-
-pub(super) type OnSelect = Rc<dyn Fn(&[SharedString], &mut Window, &mut App)>;
-pub(super) type OnRow = Rc<dyn Fn(&SharedString, &mut Window, &mut App)>;
-pub(super) type OnSort = Rc<dyn Fn(&[SortKey], &mut Window, &mut App)>;
-
-/// Rows under headers. A press on a header sorts, rising then falling then off; Shift adds it to the sort. A header drags to move its column and its edge drags to resize it. A query and filter rules keep rows; pages split long results, or a long table draws only the rows in view. Rows can gather into folding groups, open a detail, or edit a cell in place. With a selection, a box leads each row. Footers show figures; tinted columns show where each number sits.
-#[derive(IntoElement)]
-pub struct DataTable {
-    pub(super) id: ElementId,
-    pub(super) base: Div,
-    pub(super) label: Option<SharedString>,
-    pub(super) columns: Vec<Column>,
-    pub(super) rows: Rc<Vec<Row>>,
-    pub(super) query: SharedString,
-    pub(super) filters: Vec<FilterRule>,
-    pub(super) any: bool,
-    pub(super) sorts: Vec<(SharedString, bool)>,
-    pub(super) hidden: Vec<SharedString>,
-    pub(super) page_size: Option<usize>,
-    pub(super) virtualized: bool,
-    pub(super) selected: Option<Vec<SharedString>>,
-    pub(super) on_select: Option<OnSelect>,
-    pub(super) detail: Option<Detail>,
-    pub(super) group_by: Option<SharedString>,
-    pub(super) on_edit: Option<OnEdit>,
-    pub(super) on_action: Option<OnAction>,
-    pub(super) current: Option<SharedString>,
-    pub(super) on_current: Option<OnRow>,
-    pub(super) on_open: Option<OnRow>,
-    pub(super) on_sort: Option<OnSort>,
-    pub(super) density: Density,
-    pub(super) empty: Option<SharedString>,
-    pub(super) scroll: Option<UniformListScrollHandle>,
-}
-
-impl Styled for DataTable {
-    fn style(&mut self) -> &mut StyleRefinement {
-        self.base.style()
-    }
-}
+pub(crate) use super::state::View;
+pub use super::state::{DataTable, Row};
 
 impl RenderOnce for DataTable {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -510,25 +434,7 @@ impl RenderOnce for DataTable {
         };
         let pager = pages.filter(|pages| *pages > 1).map(|pages| {
             let size = self.page_size.expect("pages come from a page size");
-            let (first, last) = (page_at * size + 1, ((page_at + 1) * size).min(total));
-            let (view, id) = (view.clone(), id.clone());
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .pt_3()
-                .child(Caption::new(format!("{first}–{last} of {total}")))
-                .child(
-                    Pagination::new((id.clone(), "pages"), page_at + 1, pages).on_change(
-                        move |page, _, cx| {
-                            view.update(cx, |view, cx| {
-                                view.page = page - 1;
-                                log::info!("data table {id:?}: page {page}");
-                                cx.notify();
-                            })
-                        },
-                    ),
-                )
+            super::foot::pager(&id, &view, page_at, size, total, pages)
         });
         let base = self
             .base
