@@ -2,13 +2,13 @@ use std::rc::Rc;
 
 use gpui::{
     Animation, AnimationExt, AnyElement, App, ElementId, FontWeight, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Pixels, Point, RenderOnce, Role, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, prelude::*,
+    IntoElement, MouseButton, ParentElement, Pixels, Point, RenderOnce, Role, ScrollHandle,
+    SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, prelude::*,
 };
 
 use crate::{
     forms::{Choice, Pick, step},
-    layout::{measure_width, text_width},
+    layout::{bring_into_view, measure_width, text_width},
     motion::{self, Axis, Marker, glide, measure_item, measure_origin, slide},
     primitives::{Icon, Tooltip, tab_stop},
     theme::{ActiveTheme, ControlSize, IconSize, Radius, TextSize},
@@ -33,6 +33,7 @@ pub struct Tabs {
     tabs: Vec<Choice>,
     selected: SharedString,
     placement: TabPlacement,
+    scrollable: bool,
     panel: Option<AnyElement>,
     on_change: Option<OnValue>,
     on_context: Option<OnContext>,
@@ -49,6 +50,7 @@ impl Tabs {
             tabs: tabs.into_iter().collect(),
             selected: selected.into(),
             placement: TabPlacement::default(),
+            scrollable: false,
             panel: None,
             on_change: None,
             on_context: None,
@@ -57,6 +59,12 @@ impl Tabs {
 
     pub fn placement(mut self, placement: TabPlacement) -> Self {
         self.placement = placement;
+        self
+    }
+
+    /// Keep horizontal tabs at their natural width and reveal the selected tab when it changes.
+    pub fn scrollable(mut self) -> Self {
+        self.scrollable = true;
         self
     }
 
@@ -108,6 +116,19 @@ impl RenderOnce for Tabs {
             window,
             cx,
         );
+        let scroll = (self.scrollable && axis == Axis::Horizontal).then(|| {
+            window
+                .use_keyed_state((self.id.clone(), "scroll"), cx, |_, _| ScrollHandle::new())
+                .read(cx)
+                .clone()
+        });
+        let reveal = scroll.as_ref().and_then(|scroll| {
+            let revealed = window.use_keyed_state((self.id.clone(), "revealed"), cx, |_, _| {
+                None::<(usize, usize)>
+            });
+            let target = (turn, chosen?);
+            (*revealed.read(cx) != Some(target)).then(|| (scroll.clone(), revealed, target))
+        });
         let focus = tab_stop((self.id.clone(), "focus").into(), true, window, cx);
         let focused = focus.is_focused(window);
         let tabs = Rc::new(self.tabs);
@@ -125,7 +146,8 @@ impl RenderOnce for Tabs {
         let strip_width =
             window.use_keyed_state((self.id.clone(), "strip-width"), cx, |_, _| Pixels::ZERO);
         let shown = *strip_width.read(cx);
-        let compact = axis == Axis::Horizontal
+        let compact = scroll.is_none()
+            && axis == Axis::Horizontal
             && tabs.iter().all(|tab| tab.icon.is_some())
             && shown > Pixels::ZERO
             && shown < natural(&tabs, window, cx);
@@ -170,6 +192,27 @@ impl RenderOnce for Tabs {
                 let pick = pick.clone();
                 let context = self.on_context.clone().filter(|_| !tab.disabled);
                 let value = tab.value.clone();
+                let reveal = reveal
+                    .clone()
+                    .filter(|_| on)
+                    .map(|(scroll, revealed, target)| {
+                        canvas(
+                            move |bounds, window, cx| {
+                                if scroll.bounds().size.width <= Pixels::ZERO {
+                                    return;
+                                }
+                                revealed.update(cx, |revealed, _| *revealed = Some(target));
+                                if bring_into_view(&scroll, bounds, gpui::Axis::Horizontal) {
+                                    window.request_animation_frame();
+                                }
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                    });
                 div()
                     .id(("tab", ix))
                     .role(Role::Tab)
@@ -177,6 +220,9 @@ impl RenderOnce for Tabs {
                     .aria_label(tab.label.clone())
                     .relative()
                     .flex()
+                    .when(scroll.is_some(), |item| {
+                        item.flex_none().whitespace_nowrap()
+                    })
                     .items_center()
                     .gap_1p5()
                     .h(theme.control_height(ControlSize::Md))
@@ -226,6 +272,7 @@ impl RenderOnce for Tabs {
                         item.child(div().text_color(colors.fg_subtle).child(note))
                     })
                     .child(measure_item(state.clone(), ix, axis))
+                    .children(reveal)
             })
             .collect::<Vec<_>>();
         let (keys, key_pick) = (tabs.clone(), pick.clone());
@@ -274,6 +321,17 @@ impl RenderOnce for Tabs {
             .child(measure_origin(state, axis))
             .children(indicator)
             .children(items);
+        let strip = match scroll {
+            Some(scroll) => div()
+                .id("scroll")
+                .flex()
+                .min_w_0()
+                .overflow_x_scroll()
+                .track_scroll(&scroll)
+                .child(strip.flex_none().min_w_full())
+                .into_any_element(),
+            None => strip.into_any_element(),
+        };
         let panel = self.panel.map(|panel| {
             div().flex_1().min_w_0().child(panel).with_animation(
                 ("tab-panel", turn),

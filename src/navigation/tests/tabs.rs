@@ -181,3 +181,69 @@ fn tabs_whose_choice_closed_mark_none_and_arrows_start_at_the_ends(cx: &mut Test
     cx.simulate_keystrokes("left");
     assert_eq!(view.read_with(cx, |view, _| view.chosen.clone()), "c");
 }
+
+struct Overflow {
+    chosen: SharedString,
+    clicked: Option<SharedString>,
+}
+
+impl Render for Overflow {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (select, inspect) = (cx.entity(), cx.entity());
+        let choices =
+            (0..10).map(|index| Choice::new(format!("{index}"), format!("Section {index}")));
+        div().w(px(200.0)).child(
+            Tabs::new("overflow", choices, self.chosen.clone())
+                .scrollable()
+                .on_change(move |id, _, cx| {
+                    select.update(cx, |view, cx| {
+                        view.chosen = id.clone();
+                        cx.notify();
+                    });
+                })
+                .on_context(move |id, _, _, cx| {
+                    inspect.update(cx, |view, _| view.clicked = Some(id.clone()));
+                }),
+        )
+    }
+}
+
+#[gpui::test]
+fn overflow_reveals_keyboard_and_host_choices_and_preserves_manual_scroll(cx: &mut TestAppContext) {
+    setup(cx);
+    let (view, cx) = cx.add_window_view(|_, _| Overflow {
+        chosen: "0".into(),
+        clicked: None,
+    });
+    let tab_at = |x, cx: &mut VisualTestContext| {
+        let at = point(px(x), px(16.0));
+        cx.simulate_mouse_move(at, None, Modifiers::none());
+        cx.simulate_mouse_down(at, gpui::MouseButton::Right, Modifiers::none());
+        view.read_with(cx, |view, _| view.clicked.clone())
+    };
+    settle(cx);
+    cx.update(|window, cx| window.focus_next(cx));
+    cx.simulate_keystrokes("end");
+    settle(cx);
+    assert_eq!(view.read_with(cx, |view, _| view.chosen.clone()), "9");
+    assert_eq!(tab_at(184.0, cx).as_deref(), Some("9"));
+
+    view.update(cx, |view, cx| {
+        view.chosen = "0".into();
+        cx.notify();
+    });
+    settle(cx);
+    assert_eq!(tab_at(12.0, cx).as_deref(), Some("0"));
+
+    cx.simulate_event(ScrollEvent {
+        source: gpui::ScrollSource::Pointer,
+        position: point(px(60.0), px(16.0)),
+        delta: ScrollDelta::Pixels(point(px(-5000.0), px(0.0))),
+        modifiers: Modifiers::none(),
+        touch_phase: TouchPhase::Moved,
+    });
+    view.update(cx, |_, cx| cx.notify());
+    settle(cx);
+    assert_eq!(tab_at(184.0, cx).as_deref(), Some("9"));
+    assert_eq!(view.read_with(cx, |view, _| view.chosen.clone()), "0");
+}
