@@ -55,7 +55,6 @@ pub struct Terminal {
     pub(crate) term: Arc<FairMutex<Term<Listener>>>,
     pub(crate) pty: Option<Notifier>,
     pub(super) remote: Option<Remote>,
-    pub(super) transport_error: Option<SharedString>,
     pub(super) appearance: Option<Appearance>,
     pub(crate) focus: FocusHandle,
     title: SharedString,
@@ -134,7 +133,6 @@ impl Terminal {
             term,
             pty,
             remote: None,
-            transport_error: None,
             appearance: None,
             focus: cx.focus_handle().tab_stop(true),
             title,
@@ -169,13 +167,19 @@ impl Terminal {
     /// Sends bytes to the program, as typing would.
     pub fn write(&mut self, bytes: impl Into<Cow<'static, [u8]>>, cx: &mut Context<Self>) {
         let bytes = bytes.into();
-        if let Some(remote) = &self.remote {
-            if let Some(transport) = &remote.transport
-                && let Err(error) = transport.input(&bytes)
-            {
-                log::error!("terminal: remote input failed: {error:#}");
-                self.transport_error = Some(format!("Remote input failed: {error:#}").into());
-                cx.notify();
+        if let Some(remote) = &mut self.remote {
+            if let Some(transport) = &remote.transport {
+                let error = match transport.input(&bytes) {
+                    Ok(()) => None,
+                    Err(error) => {
+                        log::error!("terminal: remote input failed: {error:#}");
+                        Some(format!("Remote input failed: {error:#}").into())
+                    }
+                };
+                if remote.input_error != error {
+                    remote.input_error = error;
+                    cx.notify();
+                }
             }
         } else if let Some(pty) = &self.pty {
             pty.notify(bytes);
@@ -211,31 +215,40 @@ impl Terminal {
         cx.notify();
     }
 
-    /// Fits the grid to `columns` by `lines`, and tells the program.
-    pub(crate) fn resize(&mut self, columns: usize, lines: usize) {
+    /// Fits the grid, retries an outstanding remote resize, and reports geometry or failure-state changes.
+    pub(crate) fn resize(&mut self, columns: usize, lines: usize) -> bool {
         let size = (columns.max(2), lines.max(1));
-        if size == self.size {
-            return;
+        let mut changed = size != self.size;
+        if changed {
+            self.size = size;
+            self.term.lock().resize(TermSize::new(size.0, size.1));
+            let cell = (
+                f32::from(self.cell.width).round() as u16,
+                f32::from(self.cell.height).round() as u16,
+            );
+            if let Some(pty) = &mut self.pty {
+                pty.on_resize(pty::window_size(&TermSize::new(size.0, size.1), cell));
+            }
+            log::debug!("terminal: {columns} by {lines}");
         }
-        self.size = size;
-        self.term.lock().resize(TermSize::new(size.0, size.1));
-        let cell = (
-            f32::from(self.cell.width).round() as u16,
-            f32::from(self.cell.height).round() as u16,
-        );
-        if let Some(pty) = &mut self.pty {
-            pty.on_resize(pty::window_size(&TermSize::new(size.0, size.1), cell));
-        }
-        if let Some(transport) = self
-            .remote
-            .as_ref()
-            .and_then(|remote| remote.transport.as_ref())
-            && let Err(error) = transport.resize(size.0, size.1)
+        if let Some(remote) = &mut self.remote
+            && (remote.sent_size != size || remote.resize_error.is_some())
+            && let Some(transport) = &remote.transport
         {
-            log::error!("terminal: remote resize failed: {error:#}");
-            self.transport_error = Some(format!("Remote resize failed: {error:#}").into());
+            let failed = remote.resize_error.is_some();
+            remote.resize_error = match transport.resize(size.0, size.1) {
+                Ok(()) => {
+                    remote.sent_size = size;
+                    None
+                }
+                Err(error) => {
+                    log::error!("terminal: remote resize failed: {error:#}");
+                    Some(format!("Remote resize failed: {error:#}").into())
+                }
+            };
+            changed |= failed != remote.resize_error.is_some();
         }
-        log::debug!("terminal: {columns} by {lines}");
+        changed
     }
 
     fn handle(&mut self, events: Vec<Event>, cx: &mut Context<Self>) {
@@ -383,7 +396,7 @@ impl Render for Terminal {
                 root.bg(ink.bg.blend(colors.warning.opacity(0.12 * left)))
             })
             .when(self.hovered.is_some(), |root| root.cursor_pointer())
-            .children(self.transport_error.clone().map(|error| {
+            .children(self.transport_error().cloned().map(|error| {
                 div()
                     .debug_selector(|| "terminal-transport-error".into())
                     .text_color(colors.danger)

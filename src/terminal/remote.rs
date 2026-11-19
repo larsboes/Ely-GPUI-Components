@@ -38,6 +38,9 @@ impl RemoteTransport {
 pub(super) struct Remote {
     pub parser: Processor,
     pub transport: Option<RemoteTransport>,
+    pub sent_size: (usize, usize),
+    pub input_error: Option<SharedString>,
+    pub resize_error: Option<SharedString>,
 }
 
 impl Terminal {
@@ -56,14 +59,14 @@ impl Terminal {
         terminal.remote = Some(Remote {
             parser: Processor::new(),
             transport: Some(transport),
+            sent_size: size,
+            input_error: None,
+            resize_error: None,
         });
         terminal
     }
 
-    /// Feeds one ordered chunk without resetting the escape-sequence parser.
-    ///
-    /// # Errors
-    /// Returns an error for a local, replayed or closed terminal.
+    /// Feeds an ordered chunk, retaining parser state; returns an error for a local, replayed or closed terminal.
     pub fn feed_remote(&mut self, bytes: &[u8], cx: &mut Context<Self>) -> anyhow::Result<()> {
         let remote = self
             .remote
@@ -83,10 +86,7 @@ impl Terminal {
         }
     }
 
-    /// Starts a fresh remote stream after the host detects a gap in retained output.
-    ///
-    /// # Errors
-    /// Returns an error unless the remote transport is open.
+    /// Resets the parser and grid after an output gap; returns an error unless the remote transport is open.
     pub fn reset_remote(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
         use alacritty_terminal::vte::ansi::{ClearMode, Handler};
         let remote = self
@@ -107,9 +107,10 @@ impl Terminal {
         Ok(())
     }
 
-    /// The most recent input or resize transport failure.
+    /// Outstanding resize then input failure; each clears when its own callback succeeds.
     pub fn transport_error(&self) -> Option<&SharedString> {
-        self.transport_error.as_ref()
+        let remote = self.remote.as_ref()?;
+        remote.resize_error.as_ref().or(remote.input_error.as_ref())
     }
 }
 
@@ -193,6 +194,112 @@ mod tests {
             [b"a".to_vec(), b"b".to_vec(), b"\x0c".to_vec()]
         );
         assert_eq!(*sizes.borrow(), [(40, 5)]);
+    }
+
+    #[gpui::test]
+    fn failed_resize_retries_the_same_size_and_stops_after_success(cx: &mut TestAppContext) {
+        let sizes = Rc::new(RefCell::new(Vec::new()));
+        let sent = sizes.clone();
+        let view = cx.new(|cx| {
+            Terminal::remote(
+                20,
+                3,
+                RemoteTransport::new(
+                    |_| Ok(()),
+                    move |columns, lines| {
+                        let mut sizes = sent.borrow_mut();
+                        sizes.push((columns, lines));
+                        anyhow::ensure!(sizes.len() > 1, "offline");
+                        Ok(())
+                    },
+                ),
+                cx,
+            )
+        });
+        view.update(cx, |terminal, cx| {
+            assert!(terminal.resize(40, 5));
+            assert_eq!(terminal.dimensions(), (40, 5));
+            assert!(terminal.transport_error().unwrap().contains("offline"));
+            terminal.write(b"input".to_vec(), cx);
+            assert!(
+                terminal.transport_error().is_some(),
+                "input hid a resize failure"
+            );
+            assert!(terminal.resize(40, 5), "recovery needs a redraw");
+            assert!(terminal.transport_error().is_none());
+            assert!(!terminal.resize(40, 5));
+        });
+        assert_eq!(*sizes.borrow(), [(40, 5), (40, 5)]);
+    }
+
+    #[gpui::test]
+    fn returning_to_the_last_sent_size_retries_an_outstanding_failure(cx: &mut TestAppContext) {
+        let sizes = Rc::new(RefCell::new(Vec::new()));
+        let sent = sizes.clone();
+        let view = cx.new(|cx| {
+            Terminal::remote(
+                20,
+                3,
+                RemoteTransport::new(
+                    |_| Ok(()),
+                    move |columns, lines| {
+                        sent.borrow_mut().push((columns, lines));
+                        anyhow::ensure!(
+                            columns == 20,
+                            "resize refused: attempt {}",
+                            sent.borrow().len()
+                        );
+                        Ok(())
+                    },
+                ),
+                cx,
+            )
+        });
+        view.update(cx, |terminal, _| {
+            assert!(terminal.resize(40, 5));
+            assert!(
+                !terminal.resize(40, 5),
+                "a repeated failure must not poll frames"
+            );
+            assert!(terminal.resize(20, 3));
+            assert!(terminal.transport_error().is_none());
+            assert!(!terminal.resize(20, 3));
+        });
+        assert_eq!(*sizes.borrow(), [(40, 5), (40, 5), (20, 3)]);
+    }
+
+    #[gpui::test]
+    fn successful_resize_does_not_hide_an_input_failure(cx: &mut TestAppContext) {
+        let attempts = Rc::new(std::cell::Cell::new(0));
+        let sent = attempts.clone();
+        let view = cx.new(|cx| {
+            Terminal::remote(
+                20,
+                3,
+                RemoteTransport::new(
+                    move |_| {
+                        sent.set(sent.get() + 1);
+                        anyhow::ensure!(sent.get() > 1, "input offline");
+                        Ok(())
+                    },
+                    |_, _| Ok(()),
+                ),
+                cx,
+            )
+        });
+        view.update(cx, |terminal, cx| {
+            terminal.write(b"first".to_vec(), cx);
+            terminal.resize(40, 5);
+            assert!(
+                terminal
+                    .transport_error()
+                    .unwrap()
+                    .contains("input offline")
+            );
+            terminal.write(b"next".to_vec(), cx);
+            assert!(terminal.transport_error().is_none());
+        });
+        assert_eq!(attempts.get(), 2, "failed input must not be replayed");
     }
 
     #[gpui::test]

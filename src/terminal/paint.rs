@@ -61,9 +61,7 @@ pub(crate) fn grid(
             let lines = (bounds.size.height / cell.height).floor() as usize;
             fit.update(cx, |terminal, cx| {
                 terminal.origin = bounds.origin;
-                let before = terminal.size;
-                terminal.resize(columns, lines);
-                if terminal.size != before {
+                if terminal.resize(columns, lines) {
                     cx.notify();
                     window.request_animation_frame();
                 }
