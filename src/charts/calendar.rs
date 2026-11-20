@@ -1,8 +1,10 @@
 use std::rc::Rc;
 
+use gpui::prelude::FluentBuilder;
 use gpui::{
     App, Div, ElementId, Entity, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels,
-    Refineable, RenderOnce, StyleRefinement, Styled, Window, canvas, div, fill,
+    Refineable, RenderOnce, StatefulInteractiveElement, StyleRefinement, Styled, Window, canvas,
+    div, fill,
 };
 use jiff::{
     Span,
@@ -15,7 +17,7 @@ use super::{
     layout::{calendar, level},
     paint::{measure, place, tint},
     parts::ChartTooltip,
-    plot::Format,
+    plot::{Format, Select},
     scale::compact,
     series::drawable,
     tiles::{Tiles, key, tracked},
@@ -30,6 +32,7 @@ pub struct CalendarHeatmap {
     start: Date,
     counts: Vec<f64>,
     format: Format,
+    select: Option<Select>,
 }
 
 impl CalendarHeatmap {
@@ -55,7 +58,14 @@ impl CalendarHeatmap {
             start,
             counts,
             format: Rc::new(compact),
+            select: None,
         }
+    }
+
+    /// Reports the day offset index (0-based from `start`) when a day square is clicked.
+    pub fn on_select(mut self, select: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
+        self.select = Some(Rc::new(select));
+        self
     }
 
     pub fn format(mut self, format: impl Fn(f64) -> String + 'static) -> Self {
@@ -165,12 +175,23 @@ impl RenderOnce for CalendarHeatmap {
             .debug_selector(|| "chart-root".into())
             .h(sizes.height * 0.5);
         root.style().refine(self.base.style());
+        let selected = tiles.clone();
+        let selected_rects = hit.clone();
         let chart = tracked(
             div().relative().flex_1().min_h_0(),
             (self.id.clone(), "calendar").into(),
             &tiles,
             move |at| hit.iter().position(|rect| rect.contains(at)),
         )
+        .when_some(self.select, |chart, select| {
+            chart.cursor_pointer().on_click(move |event, window, cx| {
+                let offset = event.position() - selected.read(cx).bounds.origin;
+                let at = (f32::from(offset.x), f32::from(offset.y));
+                if let Some(ix) = selected_rects.iter().position(|rect| rect.contains(at)) {
+                    select(ix, window, cx);
+                }
+            })
+        })
         .child(
             canvas(
                 |_, _, _| {},
