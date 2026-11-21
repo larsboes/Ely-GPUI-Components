@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use gpui::{
-    AnyElement, App, FontWeight, HighlightStyle, InteractiveElement, IntoElement, Keystroke,
-    ParentElement, RenderOnce, SharedString, Styled, StyledText, Window, div,
+    AnyElement, App, AsKeystroke, FontWeight, HighlightStyle, InteractiveElement, IntoElement,
+    Keystroke, ParentElement, RenderOnce, SharedString, Styled, StyledText, Window, div,
 };
 use regex::RegexBuilder;
 use smallvec::SmallVec;
@@ -56,10 +56,11 @@ fn cap(label: String, cx: &App) -> impl IntoElement + use<> {
         .child(label)
 }
 
-/// One key, labeled for the theme's platform. Takes gpui key syntax.
+/// One key, labeled for the theme's platform. Takes gpui key syntax or a [`Keystroke`].
 #[derive(IntoElement)]
 pub struct Kbd {
     source: SharedString,
+    stroke: Option<Keystroke>,
 }
 
 impl Kbd {
@@ -67,14 +68,40 @@ impl Kbd {
     pub fn new(source: &str) -> Self {
         Self {
             source: SharedString::from(source.to_string()),
+            stroke: None,
         }
+    }
+
+    /// Build a [`Kbd`] directly from a [`Keystroke`].
+    pub fn from_keystroke(stroke: Keystroke) -> Self {
+        Self {
+            source: SharedString::default(),
+            stroke: Some(stroke),
+        }
+    }
+
+    /// Look up the first keystroke bound to `action` in `window` and build a [`Kbd`].
+    pub fn for_action(action: &dyn gpui::Action, window: &Window) -> Option<Self> {
+        window
+            .bindings_for_action(action)
+            .into_iter()
+            .next()
+            .and_then(|binding| {
+                binding
+                    .keystrokes()
+                    .first()
+                    .map(|stroke| Self::from_keystroke(stroke.as_keystroke().clone()))
+            })
     }
 }
 
 impl RenderOnce for Kbd {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let platform = cx.theme().platform;
-        let labels = keystroke_labels(&keystroke(&self.source, platform), platform);
+        let stroke = self
+            .stroke
+            .unwrap_or_else(|| keystroke(&self.source, platform));
+        let labels = keystroke_labels(&stroke, platform);
         div()
             .flex()
             .gap_0p5()

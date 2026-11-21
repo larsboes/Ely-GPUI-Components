@@ -110,7 +110,7 @@ pub(crate) use slider::keyed;
 pub use slider::{RangeSlider, Slider};
 pub use stepper::Stepper;
 pub use structure::{
-    DirtyIndicator, Form, FormError, FormField, FormLabel, FormSection, InlineForm,
+    DirtyIndicator, Form, FormError, FormField, FormLabel, FormSection, InlineForm, SettingRow,
 };
 pub use switch::Switch;
 pub(crate) use syntax::{Syntax, syntax_of};

@@ -356,3 +356,65 @@ impl RenderOnce for DirtyIndicator {
         div().children(shown)
     }
 }
+
+/// A horizontal settings row: title and optional description on the left, control on the right.
+#[derive(IntoElement)]
+pub struct SettingRow {
+    title: SharedString,
+    description: Option<SharedString>,
+    control: AnyElement,
+}
+
+impl SettingRow {
+    pub fn new(title: impl Into<SharedString>, control: impl IntoElement) -> Self {
+        Self {
+            title: title.into(),
+            description: None,
+            control: control.into_any_element(),
+        }
+    }
+
+    pub fn description(mut self, text: impl Into<SharedString>) -> Self {
+        self.description = Some(text.into());
+        self
+    }
+}
+
+impl RenderOnce for SettingRow {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.theme();
+        let colors = &theme.colors;
+        div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_x_6()
+            .gap_y_2()
+            .px_4()
+            .py_3()
+            .min_h(gpui::px(48.))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(gpui::px(200.))
+                    .flex()
+                    .flex_col()
+                    .gap(gpui::px(2.))
+                    .child(
+                        div()
+                            .text_size(theme.text_size(TextSize::Sm))
+                            .text_color(colors.fg)
+                            .child(self.title),
+                    )
+                    .when_some(self.description, |col, desc| {
+                        col.child(
+                            div()
+                                .text_size(theme.text_size(TextSize::Xs))
+                                .text_color(colors.fg_muted)
+                                .child(desc),
+                        )
+                    }),
+            )
+            .child(div().flex_none().ml_auto().child(self.control))
+    }
+}
