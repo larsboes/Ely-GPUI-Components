@@ -23,7 +23,7 @@ pub use formatted::{
     CurrencyText, DateTimeText, DurationText, FileSizeText, NumberText, PercentText, PluralText,
     RelativeTime,
 };
-pub use inline::{Blockquote, Code, Highlight, Kbd, KbdCombo};
+pub use inline::{Blockquote, Code, Highlight, Kbd, KbdCombo, KeyBar, ShortcutHint};
 pub use link::{ExternalLink, Link};
 pub use math::{Latex, MathError};
 pub use rolling::AnimatedNumber;

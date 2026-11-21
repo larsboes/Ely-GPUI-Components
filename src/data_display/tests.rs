@@ -10,8 +10,8 @@ use gpui::{
 };
 
 use super::{
-    Badge, Carousel, DescriptionList, Gauge, PropertyGrid, PropertyGroup, Stars, Statistic, Tone,
-    UsageBar,
+    Badge, Carousel, DescriptionList, Gauge, ProgressBar, PropertyGrid, PropertyGroup, Stars,
+    Statistic, Tone, UsageBar,
 };
 use crate::{
     primitives::Measure,
@@ -299,6 +299,7 @@ impl Render for Over {
             .child(Gauge::new("cpu", "CPU", 140.0, 0.0, 100.0))
             .child(Stars::new(6.5))
             .child(parts)
+            .child(ProgressBar::new(0.75).tone(Tone::Success))
     }
 }
 

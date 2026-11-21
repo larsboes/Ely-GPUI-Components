@@ -230,3 +230,279 @@ impl RenderOnce for NavGroup {
             .child(Collapsible::new((self.id, "items"), open).child(items))
     }
 }
+
+/// An item in a [`BottomTabBar`]: key, label, icon text or glyph, and optional badge count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BottomTabItem {
+    pub id: SharedString,
+    pub label: SharedString,
+    pub icon: SharedString,
+    pub badge: Option<usize>,
+}
+
+impl BottomTabItem {
+    pub fn new(
+        id: impl Into<SharedString>,
+        icon: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            icon: icon.into(),
+            badge: None,
+        }
+    }
+
+    pub fn badge(mut self, badge: Option<usize>) -> Self {
+        self.badge = badge;
+        self
+    }
+}
+
+type OnSelectTab = Rc<dyn Fn(&SharedString, &mut Window, &mut App)>;
+
+/// Touch-friendly bottom tab bar respecting 44pt+ minimum touch targets.
+#[derive(IntoElement)]
+pub struct BottomTabBar {
+    id: ElementId,
+    items: Vec<BottomTabItem>,
+    active_id: SharedString,
+    on_select: Option<OnSelectTab>,
+}
+
+impl BottomTabBar {
+    pub fn new(
+        id: impl Into<ElementId>,
+        items: impl IntoIterator<Item = BottomTabItem>,
+        active_id: impl Into<SharedString>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            items: items.into_iter().collect(),
+            active_id: active_id.into(),
+            on_select: None,
+        }
+    }
+
+    pub fn on_select(
+        mut self,
+        handler: impl Fn(&SharedString, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_select = Some(Rc::new(handler));
+        self
+    }
+}
+
+impl RenderOnce for BottomTabBar {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.theme();
+        let colors = &theme.colors;
+        let on_select = self.on_select;
+        let active_id = self.active_id;
+        div()
+            .id(self.id)
+            .flex()
+            .items_center()
+            .justify_around()
+            .h(gpui::px(56.))
+            .bg(colors.surface)
+            .border_t_1()
+            .border_color(colors.border)
+            .px_2()
+            .children(self.items.into_iter().enumerate().map(|(idx, item)| {
+                let is_active = item.id == active_id;
+                let select = on_select.clone();
+                let item_id = item.id.clone();
+                let fg = if is_active {
+                    colors.accent
+                } else {
+                    colors.fg_muted
+                };
+                div()
+                    .id(SharedString::from(format!("nav-tab-{idx}")))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .min_w(gpui::px(64.))
+                    .min_h(gpui::px(44.))
+                    .cursor_pointer()
+                    .gap_1()
+                    .on_click(move |_, window, cx| {
+                        if let Some(select) = &select {
+                            select(&item_id, window, cx);
+                        }
+                    })
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .text_size(theme.text_size(TextSize::Sm))
+                                    .font_weight(if is_active {
+                                        FontWeight::BOLD
+                                    } else {
+                                        FontWeight::MEDIUM
+                                    })
+                                    .text_color(fg)
+                                    .child(item.icon),
+                            )
+                            .when_some(item.badge.filter(|c| *c > 0), |el, count| {
+                                el.child(
+                                    div()
+                                        .absolute()
+                                        .top(gpui::px(-4.))
+                                        .right(gpui::px(-10.))
+                                        .min_w(gpui::px(16.))
+                                        .h(gpui::px(16.))
+                                        .px(gpui::px(4.))
+                                        .rounded_full()
+                                        .bg(colors.warning)
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .text_color(colors.on_accent)
+                                        .text_size(theme.text_size(TextSize::Xs))
+                                        .font_weight(FontWeight::BOLD)
+                                        .child(format!("{count}")),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_size(theme.text_size(TextSize::Xs))
+                            .font_weight(if is_active {
+                                FontWeight::SEMIBOLD
+                            } else {
+                                FontWeight::NORMAL
+                            })
+                            .text_color(fg)
+                            .child(item.label),
+                    )
+            }))
+    }
+}
+
+/// Top navigation bar for mobile detail views and compact headers.
+#[derive(IntoElement)]
+pub struct NavHeader {
+    title: SharedString,
+    subtitle: Option<SharedString>,
+    on_back: Option<Run>,
+    trailing: Option<AnyElement>,
+}
+
+impl NavHeader {
+    pub fn new(title: impl Into<SharedString>) -> Self {
+        Self {
+            title: title.into(),
+            subtitle: None,
+            on_back: None,
+            trailing: None,
+        }
+    }
+
+    pub fn subtitle(mut self, subtitle: impl Into<SharedString>) -> Self {
+        self.subtitle = Some(subtitle.into());
+        self
+    }
+
+    pub fn on_back(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_back = Some(Rc::new(handler));
+        self
+    }
+
+    pub fn trailing(mut self, trailing: impl IntoElement) -> Self {
+        self.trailing = Some(trailing.into_any_element());
+        self
+    }
+}
+
+impl RenderOnce for NavHeader {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.theme();
+        let colors = &theme.colors;
+        let left = match self.on_back {
+            Some(on_back) => div()
+                .id("nav-back")
+                .flex()
+                .items_center()
+                .gap_1()
+                .cursor_pointer()
+                .min_h(gpui::px(44.))
+                .text_size(theme.text_size(TextSize::Sm))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(colors.accent)
+                .child("← Back")
+                .on_click(move |_, window, cx| on_back(window, cx))
+                .into_any_element(),
+            None => div().w(gpui::px(60.)).into_any_element(),
+        };
+        let center = div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .child(
+                div()
+                    .text_size(theme.text_size(TextSize::Sm))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(colors.fg)
+                    .child(self.title),
+            )
+            .when_some(self.subtitle, |el, sub| {
+                el.child(
+                    div()
+                        .text_size(theme.text_size(TextSize::Xs))
+                        .text_color(colors.fg_muted)
+                        .child(sub),
+                )
+            });
+        let right = match self.trailing {
+            Some(actions) => div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(actions)
+                .into_any_element(),
+            None => div().w(gpui::px(60.)).into_any_element(),
+        };
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .px_4()
+            .py_3()
+            .bg(colors.surface)
+            .border_b_1()
+            .border_color(colors.border)
+            .child(left)
+            .child(center)
+            .child(right)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BottomTabBar, BottomTabItem, NavHeader};
+
+    #[test]
+    fn bottom_tab_item_and_header_builders_preserve_fields() {
+        let item = BottomTabItem::new("inbox", "tray", "Inbox").badge(Some(4));
+        assert_eq!(item.id.as_ref(), "inbox");
+        assert_eq!(item.icon.as_ref(), "tray");
+        assert_eq!(item.label.as_ref(), "Inbox");
+        assert_eq!(item.badge, Some(4));
+
+        let bar = BottomTabBar::new("mobile-tabs", [item], "inbox");
+        assert_eq!(bar.items.len(), 1);
+        assert_eq!(bar.active_id.as_ref(), "inbox");
+
+        let header = NavHeader::new("Trip").subtitle("Tokyo");
+        assert_eq!(header.title.as_ref(), "Trip");
+        assert_eq!(header.subtitle.as_deref(), Some("Tokyo"));
+    }
+}

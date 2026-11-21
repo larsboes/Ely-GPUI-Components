@@ -29,7 +29,7 @@ pub use comparison::Comparison;
 pub use feed::{Activity, ActivityFeed};
 pub use gallery::Gallery;
 pub(crate) use measures::tone;
-pub use measures::{Gauge, Meter, UsageBar};
+pub use measures::{Gauge, Meter, ProgressBar, UsageBar};
 pub use records::{DescriptionList, PropertyGrid, PropertyGroup};
 pub use spark::Sparkline;
 pub use stars::Stars;

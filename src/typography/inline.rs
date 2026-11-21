@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use gpui::{
-    AnyElement, App, FontWeight, HighlightStyle, IntoElement, Keystroke, ParentElement, RenderOnce,
-    SharedString, Styled, StyledText, Window, div,
+    AnyElement, App, FontWeight, HighlightStyle, InteractiveElement, IntoElement, Keystroke,
+    ParentElement, RenderOnce, SharedString, Styled, StyledText, Window, div,
 };
 use regex::RegexBuilder;
 use smallvec::SmallVec;
@@ -218,6 +218,82 @@ impl RenderOnce for Highlight {
     }
 }
 
+/// A keyboard shortcut cap paired with its action label (`[key] action`).
+#[derive(IntoElement)]
+pub struct ShortcutHint {
+    key: SharedString,
+    action: SharedString,
+}
+
+impl ShortcutHint {
+    pub fn new(key: impl Into<SharedString>, action: impl Into<SharedString>) -> Self {
+        Self {
+            key: key.into(),
+            action: action.into(),
+        }
+    }
+}
+
+impl RenderOnce for ShortcutHint {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.theme();
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(cap(self.key.to_string(), cx))
+            .child(
+                div()
+                    .text_size(theme.text_size(TextSize::Xs))
+                    .text_color(theme.colors.fg_muted)
+                    .child(self.action),
+            )
+    }
+}
+
+/// Footer bar of [`ShortcutHint`] items.
+#[derive(IntoElement, Default)]
+pub struct KeyBar {
+    hints: SmallVec<[ShortcutHint; 8]>,
+}
+
+impl KeyBar {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn hint(mut self, key: impl Into<SharedString>, action: impl Into<SharedString>) -> Self {
+        self.hints.push(ShortcutHint::new(key, action));
+        self
+    }
+
+    pub fn hints<K, A>(mut self, hints: impl IntoIterator<Item = (K, A)>) -> Self
+    where
+        K: Into<SharedString>,
+        A: Into<SharedString>,
+    {
+        self.hints
+            .extend(hints.into_iter().map(|(k, a)| ShortcutHint::new(k, a)));
+        self
+    }
+}
+
+impl RenderOnce for KeyBar {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.theme();
+        div()
+            .debug_selector(|| "key-bar".into())
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_3()
+            .pt_2()
+            .text_size(theme.text_size(TextSize::Xs))
+            .text_color(theme.colors.fg_muted)
+            .children(self.hints)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Highlight, Range};
@@ -236,5 +312,16 @@ mod tests {
         assert!(none.ranges.is_empty());
         let literal = Highlight::matching("a.b ab", ".");
         assert_eq!(literal.ranges, vec![Range { start: 1, end: 2 }]);
+    }
+
+    #[test]
+    fn key_bar_collects_hints_in_order() {
+        let bar = super::KeyBar::new()
+            .hint("j/k", "move")
+            .hints([("e", "archive"), ("/", "search")]);
+        assert_eq!(bar.hints.len(), 3);
+        assert_eq!(bar.hints[0].key.as_ref(), "j/k");
+        assert_eq!(bar.hints[0].action.as_ref(), "move");
+        assert_eq!(bar.hints[2].key.as_ref(), "/");
     }
 }

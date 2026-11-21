@@ -12,7 +12,7 @@ mod tests;
 pub use alerts::{
     AlertList, AlertState, Incident, IncidentCard, IncidentPhase, IncidentUpdate, MonitorAlert,
 };
-pub use card::DashboardCard;
+pub use card::{DashboardCard, MetricStrip, MetricTile, QuickActionTile};
 pub use controls::{DashboardFilter, DashboardFilterBar, RefreshIntervalSelector, TimeWindow};
 pub use events::{EventStream, StreamEvent};
 pub use grid::DashboardGrid;

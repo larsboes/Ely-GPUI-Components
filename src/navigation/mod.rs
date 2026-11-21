@@ -19,7 +19,7 @@ pub use editor_tabs::{EditorTab, EditorTabs};
 pub use goto::GoToLine;
 pub use history::BackForwardNavigation;
 pub use menu::NavigationMenu;
-pub use nav::{NavGroup, NavItem};
+pub use nav::{BottomTabBar, BottomTabItem, NavGroup, NavHeader, NavItem};
 pub use overflow::TabOverflowMenu;
 pub use pages::{LoadMore, Pagination};
 pub use palette::{

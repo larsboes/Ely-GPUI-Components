@@ -5,7 +5,8 @@ use std::{
 
 use gpui::{
     Animation, AnimationExt, App, ElementId, FontWeight, Hsla, InteractiveElement, IntoElement,
-    ParentElement, RenderOnce, SharedString, Styled, Window, canvas, div, prelude::*, relative,
+    ParentElement, Pixels, RenderOnce, SharedString, Styled, Window, canvas, div, prelude::*, px,
+    relative,
 };
 
 use crate::{
@@ -405,6 +406,70 @@ impl RenderOnce for UsageBar {
                 .font_weight(FontWeight::NORMAL)
                 .children(legend),
         )
+    }
+}
+
+/// Compact inline horizontal progress bar without a header or legend, for table cells and summary strips.
+#[derive(IntoElement)]
+pub struct ProgressBar {
+    share: f32,
+    width: Pixels,
+    height: Pixels,
+    color: Option<Hsla>,
+    tone: Option<super::Tone>,
+}
+
+impl ProgressBar {
+    pub fn new(share: f32) -> Self {
+        Self {
+            share: share.clamp(0.0, 1.0),
+            width: px(48.0),
+            height: px(4.0),
+            color: None,
+            tone: None,
+        }
+    }
+
+    pub fn width(mut self, width: Pixels) -> Self {
+        self.width = width;
+        self
+    }
+
+    pub fn height(mut self, height: Pixels) -> Self {
+        self.height = height;
+        self
+    }
+
+    pub fn color(mut self, color: impl Into<Hsla>) -> Self {
+        self.color = Some(color.into());
+        self
+    }
+
+    pub fn tone(mut self, tone: super::Tone) -> Self {
+        self.tone = Some(tone);
+        self
+    }
+}
+
+impl RenderOnce for ProgressBar {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let colors = &cx.theme().colors;
+        let fill = self
+            .color
+            .or_else(|| self.tone.map(|t| t.dot(colors)))
+            .unwrap_or(colors.accent);
+        div()
+            .w(self.width)
+            .h(self.height)
+            .rounded_full()
+            .bg(colors.border)
+            .child(
+                div()
+                    .h_full()
+                    .rounded_full()
+                    .bg(fill)
+                    .w(self.width * self.share),
+            )
     }
 }
 

@@ -5,7 +5,8 @@ use gpui::{
 
 use super::{
     AlertList, AlertState, DashboardCard, DashboardFilter, DashboardFilterBar, DashboardGrid,
-    EventStream, MonitorAlert, StreamEvent, Tile, TimeWindow,
+    EventStream, MetricStrip, MetricTile, MonitorAlert, QuickActionTile, StreamEvent, Tile,
+    TimeWindow,
 };
 use crate::{
     buttons::Button,
@@ -334,4 +335,41 @@ fn tiles_and_cards_that_do_not_match_are_left_out(cx: &mut TestAppContext) {
         let (_, cx) = cx.add_window_view(move |_, _| Mismatched(width));
         settle(cx);
     }
+}
+
+fn metric_and_actions(_: &Board, owner: Entity<Board>) -> AnyElement {
+    let tile_owner = owner.clone();
+    div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .child(
+            MetricStrip::new()
+                .child(
+                    MetricTile::new("tile-inbox", "Inbox", "14")
+                        .detail("3 urgent")
+                        .active(true)
+                        .on_click(move |_, _, cx| say(&tile_owner, "tile-inbox".into(), cx)),
+                )
+                .child(MetricTile::new("tile-due", "Due today", "5").tone(Tone::Warning)),
+        )
+        .child(
+            QuickActionTile::new("act-capture", crate::primitives::IconName::Plus, "Capture")
+                .tooltip("New capture")
+                .active(true)
+                .on_click(move |_, _, cx| say(&owner, "act-capture".into(), cx)),
+        )
+        .into_any_element()
+}
+
+#[gpui::test]
+fn metric_tiles_and_quick_actions_render_and_fire_clicks(cx: &mut TestAppContext) {
+    let (host, cx) = board(metric_and_actions, cx);
+    let tile = cx.debug_bounds("metric-tile-tile-inbox").expect("metric tile");
+    let action = cx.debug_bounds("quick-action-act-capture").expect("quick action");
+    cx.simulate_click(tile.center(), gpui::Modifiers::none());
+    settle(cx);
+    cx.simulate_click(action.center(), gpui::Modifiers::none());
+    settle(cx);
+    assert_eq!(said(&host, cx), ["tile-inbox", "act-capture"]);
 }
